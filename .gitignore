@@ -3,6 +3,7 @@
 *.tar
 *.pkl
 *.csv
+*.JPEG
 wandb/
 
 # Byte-compiled / optimized / DLL files

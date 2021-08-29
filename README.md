@@ -23,7 +23,8 @@ This codebase is tested with:
 
 ## Running Experiments 
 ### Step 0: Dataset Preparation
-**MiniImageNet and CD-FSL:** Download the datasets for CD-FSL benchmark following step 1 and step 2 here: https://github.com/IBM/cdfsl-benchmark  
+**CD-FSL:** Download the datasets for CD-FSL benchmark following step 1 and step 2 here: https://github.com/IBM/cdfsl-benchmark  
+**MiniImageNet:** Download miniImageNet using https://drive.google.com/file/d/1uxpnJ3Pmmwl-6779qiVJ5JpWwOGl48xt/view?usp=sharing and place the miniImagenet folder to `data/`.
 **tieredImageNet:** Prepare the tieredImageNet dataset following https://github.com/mileyan/simple_shot. Note after running the preparation script, you will need to split the saved images into 3 different folders: train, val, test. 
 
 ### Step 1: Teacher Training on the Base Dataset
