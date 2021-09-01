@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # bash script to train STARTUP representation without SimCLR self-supervision
-export CUDA_VISIBLE_DEVICES=1
+export CUDA_VISIBLE_DEVICES=0
 
 ##############################################################################################
 # Train student representation using MiniImageNet as the source 
@@ -32,7 +32,8 @@ do
     --teacher_path ../teacher_miniImageNet/logs_deterministic/checkpoints/miniImageNet/ResNet10_baseline_256_aug/399.tar \
     --teacher_path_version 0 \
     --base_dataset miniImageNet \
-    --base_path /scratch/datasets/miniImageNet_full_resolution/train \
+    # --base_path /scratch/datasets/miniImageNet_full_resolution/train \
+    --base_path ./data/miniImagenet/train \
     --base_no_color_jitter \
     --base_val_ratio 0.05 \
     --eval_freq 2 \
