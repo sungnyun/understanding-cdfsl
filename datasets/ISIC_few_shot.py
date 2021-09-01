@@ -1,5 +1,6 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
 
+import os
 import torch
 from PIL import Image
 import numpy as np
@@ -20,8 +21,8 @@ import configs
 def identity(x): return x
 
 class CustomDatasetFromImages(Dataset):
-    def __init__(self, transform, target_transform=identity, csv_path= configs.ISIC_path + "/ISIC2018_Task3_Training_GroundTruth/ISIC2018_Task3_Training_GroundTruth.csv", \
-        image_path = configs.ISIC_path + "/ISIC2018_Task3_Training_Input/", split=None):
+    def __init__(self, transform, target_transform=identity, csv_path= configs.ISIC_path + "/ISIC2018_Task3_Training_GroundTruth.csv", \
+        image_path = configs.ISIC_path, split=None):
         """
         Args:
             csv_path (string): path to csv file
@@ -67,7 +68,7 @@ class CustomDatasetFromImages(Dataset):
         # Get image name from the pandas df
         single_image_name = self.image_name[index]
         # Open image
-        temp = Image.open(self.img_path +  single_image_name + ".jpg")
+        temp = Image.open(os.path.join(self.img_path, single_image_name + ".jpg"))
         img_as_img = temp.copy()
         # Get label(class) of the image based on the cropped pandas column
         single_image_label = self.labels[index]
