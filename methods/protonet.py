@@ -1,5 +1,6 @@
 # This code is modified from https://github.com/jakesnell/prototypical-networks 
 
+import backbone
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -8,12 +9,12 @@ import torch.nn.functional as F
 from methods.meta_template import MetaTemplate
 
 class ProtoNet(MetaTemplate):
-    def __init__(self, model_func,  n_way, n_support):
+    def __init__(self, model_func, n_way, n_support):
         super(ProtoNet, self).__init__( model_func,  n_way, n_support)
         self.loss_fn = nn.CrossEntropyLoss()
 
 
-    def set_forward(self,x,is_feature = False):
+    def set_forward(self, x, is_feature = False):
         z_support, z_query  = self.parse_feature(x,is_feature)
 
         z_support   = z_support.contiguous()

@@ -10,85 +10,87 @@ from torch.utils.data import Dataset, DataLoader
 from abc import abstractmethod
 from torchvision.datasets import ImageFolder
 
-import copy
-import os
-
 from PIL import ImageFile
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 import sys
 sys.path.append("../")
-import configs
+from configs import *
 
 identity = lambda x:x
-
-
-def construct_subset(dataset, split):
-    split = pd.read_csv(split)['img_path'].values
-    root = dataset.root
-
-    class_to_idx = dataset.class_to_idx
-
-    # create targets
-    targets = [class_to_idx[os.path.dirname(i)] for i in split]
-
-    # image_names = np.array([i[0] for i in dataset.imgs])
-
-    # # ind
-    # ind = np.concatenate(
-    #     [np.where(image_names == os.path.join(root, j))[0] for j in split])
-
-    image_names = [os.path.join(root, j) for j in split]
-    dataset_subset = copy.deepcopy(dataset)
-
-    dataset_subset.samples = [j for j in zip(image_names, targets)]
-    dataset_subset.imgs = dataset_subset.samples
-    dataset_subset.targets = targets
-    return dataset_subset
-
 class SimpleDataset:
-    def __init__(self, transform, target_transform=identity, split=None):
+    def __init__(self, transform, target_transform=identity):
         self.transform = transform
         self.target_transform = target_transform
 
-        self.d = ImageFolder(configs.EuroSAT_path, transform=transform, target_transform=target_transform) 
-        self.split = split
-        if split is not None:
-            print("Using Split: ", split)
-            self.d = construct_subset(self.d, split)
+        self.meta = {}
+
+        self.meta['image_names'] = []
+        self.meta['image_labels'] = []
+
+        d = ImageFolder(EuroSAT_path)
+
+        for i, (data, label) in enumerate(d):
+            self.meta['image_names'].append(data)
+            self.meta['image_labels'].append(label)  
 
     def __getitem__(self, i):
-        return self.d[i]
+
+        img = self.transform(self.meta['image_names'][i])
+        target = self.target_transform(self.meta['image_labels'][i])
+
+        return img, target
 
     def __len__(self):
-        return len(self.d)
+        return len(self.meta['image_names'])
 
 
 class SetDataset:
-    def __init__(self, batch_size, transform, split=None):
-        self.d = ImageFolder(configs.EuroSAT_path, transform=transform)
-        self.split = split
-        if split is not None:
-            print("Using Split: ", split)
-            self.d = construct_subset(self.d, split)
-        self.cl_list = range(len(self.d.classes))
+    def __init__(self, batch_size, transform):
+        self.sub_meta = {}
+        self.cl_list = range(10)
 
+        for cl in self.cl_list:
+            self.sub_meta[cl] = []
+
+        d = ImageFolder(EuroSAT_path)
+
+        for i, (data, label) in enumerate(d):
+            self.sub_meta[label].append(data)
+
+        for key, item in self.sub_meta.items():
+            print (len(self.sub_meta[key]))
+    
         self.sub_dataloader = [] 
         sub_data_loader_params = dict(batch_size = batch_size,
                                   shuffle = True,
-                                  num_workers = 0,
+                                  num_workers = 0, #use main thread only or may receive multiple batches
                                   pin_memory = False)        
         for cl in self.cl_list:
-            ind = np.where(np.array(self.d.targets) == cl)[0].tolist()
-            sub_dataset = torch.utils.data.Subset(self.d, ind)
+            sub_dataset = SubDataset(self.sub_meta[cl], cl, transform = transform )
             self.sub_dataloader.append( torch.utils.data.DataLoader(sub_dataset, **sub_data_loader_params) )
-
 
     def __getitem__(self, i):
         return next(iter(self.sub_dataloader[i]))
 
     def __len__(self):
         return len(self.sub_dataloader)
+
+class SubDataset:
+    def __init__(self, sub_meta, cl, transform=transforms.ToTensor(), target_transform=identity):
+        self.sub_meta = sub_meta
+        self.cl = cl 
+        self.transform = transform
+        self.target_transform = target_transform
+
+    def __getitem__(self,i):
+
+        img = self.transform(self.sub_meta[i])
+        target = self.target_transform(self.cl)
+        return img, target
+
+    def __len__(self):
+        return len(self.sub_meta)
 
 class EpisodicBatchSampler(object):
     def __init__(self, n_classes, n_way, n_episodes):
@@ -116,11 +118,11 @@ class TransformLoader:
             method = add_transforms.ImageJitter( self.jitter_param )
             return method
         method = getattr(transforms, transform_type)
-        if transform_type == 'RandomSizedCrop' or transform_type == 'RandomResizedCrop':
-            return method(self.image_size)
+        if transform_type=='RandomSizedCrop':
+            return method(self.image_size) 
         elif transform_type=='CenterCrop':
             return method(self.image_size) 
-        elif transform_type == 'Scale' or transform_type == 'Resize':
+        elif transform_type=='Resize':
             return method([int(self.image_size*1.15), int(self.image_size*1.15)])
         elif transform_type=='Normalize':
             return method(**self.normalize_param )
@@ -129,7 +131,7 @@ class TransformLoader:
 
     def get_composed_transform(self, aug = False):
         if aug:
-            transform_list = ['RandomResizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            transform_list = ['RandomSizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
         else:
             transform_list = ['Resize','CenterCrop', 'ToTensor', 'Normalize']
 
@@ -143,23 +145,22 @@ class DataManager(object):
         pass 
 
 class SimpleDataManager(DataManager):
-    def __init__(self, image_size, batch_size, split=None):        
+    def __init__(self, image_size, batch_size):        
         super(SimpleDataManager, self).__init__()
         self.batch_size = batch_size
         self.trans_loader = TransformLoader(image_size)
-        self.split = split
 
-    def get_data_loader(self, aug, num_workers=12): #parameters that would change on train/val set
+    def get_data_loader(self, aug): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SimpleDataset(transform, split=self.split)
+        dataset = SimpleDataset(transform)
 
-        data_loader_params = dict(batch_size = self.batch_size, shuffle = True, num_workers=num_workers, pin_memory = True)       
+        data_loader_params = dict(batch_size = self.batch_size, shuffle = True, num_workers = 12, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
 
         return data_loader
 
 class SetDataManager(DataManager):
-    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide=100, split=None):        
+    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100):        
         super(SetDataManager, self).__init__()
         self.image_size = image_size
         self.n_way = n_way
@@ -167,13 +168,12 @@ class SetDataManager(DataManager):
         self.n_eposide = n_eposide
 
         self.trans_loader = TransformLoader(image_size)
-        self.split = split
 
-    def get_data_loader(self, aug, num_workers=12): #parameters that would change on train/val set
+    def get_data_loader(self, aug): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SetDataset(self.batch_size, transform, split=self.split)
+        dataset = SetDataset(self.batch_size, transform)
         sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide )  
-        data_loader_params = dict(batch_sampler = sampler,  num_workers=num_workers, pin_memory = True)       
+        data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
         return data_loader
 

@@ -1,3 +1,4 @@
+import backbone
 import torch
 import torch.nn as nn
 from torch.autograd import Variable
@@ -11,8 +12,8 @@ class MetaTemplate(nn.Module):
         super(MetaTemplate, self).__init__()
         self.n_way      = n_way
         self.n_support  = n_support
-        self.n_query    = -1 #(change depends on input) 
-        self.feature    = model_func()
+        self.n_query    = 15 #(If -1, change depends on input) 
+        self.feature    = model_func
         self.feat_dim   = self.feature.final_feat_dim
         self.change_way = change_way  #some methods allow different_way classification during training and test
 
@@ -50,7 +51,7 @@ class MetaTemplate(nn.Module):
         top1_correct = np.sum(topk_ind[:,0] == y_query)
         return float(top1_correct), len(y_query)
 
-    def train_loop(self, epoch, train_loader, optimizer ):
+    def train_loop(self, epoch, train_loader, optimizer):
         print_freq = 10
 
         avg_loss=0

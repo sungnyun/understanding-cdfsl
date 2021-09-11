@@ -1,60 +1,215 @@
-# Self-training for Few-shot Transfer Across Extreme Task Differences (STARTUP)
+# Cross-Domain Few-Shot Learning (CD-FSL) Benchmark
 
-## Introduction
-This repo contains the official implementation of the following ICLR2021 paper:
+### Website
+#### https://www.learning-with-limited-labels.com/
 
-**Title:** Self-training for Few-shot Transfer Across Extreme Task Differences  
-**Authors:** Cheng Perng Phoo, Bharath Hariharan  
-**Institution:** Cornell University  
-**Arxiv:** https://arxiv.org/abs/2010.07734  
-**Abstract:**  
-Most few-shot learning techniques are pre-trained on a large, labeled "base dataset". In problem domains where such large labeled datasets are not available for pre-training (e.g., X-ray, satellite images), one must resort to pre-training in a different "source" problem domain (e.g., ImageNet), which can be very different from the desired target task. Traditional few-shot and transfer learning techniques fail in the presence of such extreme differences between the source and target tasks. In this paper, we present a simple and effective solution to tackle this extreme domain gap: self-training a source domain representation on unlabeled data from the target domain. We show that this improves one-shot performance on the target domain by 2.9 points on average on the challenging BSCD-FSL benchmark consisting of datasets from multiple domains.
+### LeaderBoard
+#### https://www.learning-with-limited-labels.com/challenge
 
-### Requirements
-This codebase is tested with:  
-1. PyTorch 1.7.1
-2. Torchvision 0.8.2
-3. NumPy 
-4. Pandas
-5. wandb (used for logging. More here: https://wandb.ai/)
+### Paper
 
+Please cite the following paper in use of this evaluation framework: https://arxiv.org/pdf/1912.07200.pdf
 
-
-
-## Running Experiments 
-### Step 0: Dataset Preparation
-**CD-FSL:** Download the datasets for CD-FSL benchmark following step 1 and step 2 here: https://github.com/IBM/cdfsl-benchmark  
-**MiniImageNet:** Download miniImageNet using https://drive.google.com/file/d/1uxpnJ3Pmmwl-6779qiVJ5JpWwOGl48xt/view?usp=sharing and place the miniImagenet folder to `data/miniImagenet/train`  
-**tieredImageNet:** Prepare the tieredImageNet dataset following https://github.com/mileyan/simple_shot. Note after running the preparation script, you will need to split the saved images into 3 different folders: train, val, test. 
-
-### Step 1: Teacher Training on the Base Dataset
-We provide scripts to produce teachers for different base datasets. Regardless of the base datasets, please follow the following steps to produce the teachers:
-1. Go into the directory `teacher_miniImageNet/` (`teacher_ImageNet/` for ImageNet)
-2. Take care of the `TODO:` in  `run.sh` and `configs.py` (if applicable). 
-3. Run `bash run.sh` to produce the teachers. 
-
-Note that for miniImageNet and tieredImageNet, the training script is adapted based on the official script provided by the CD-FSL benchmark. For ImageNet, we simply download the pre-trained models from PyTorch and convert them to relevant format. 
-
-### Step 2: Student Training
-To train the STARTUP's representation, please follow the following steps:
-1. Go into the directory `student_STARTUP/` (`student_STARTUP_no_self_supervision/` for the version without SimCLR)
-2. Take care of the `TODO:` in  `run.sh` and `configs.py` 
-3. Run `bash run.sh` to produce the student/STARTUP representation. 
-
-### Step 3: Evaluation
-To evaluate different representations, go into `evaluation/`, modify the  `TODO:` in  `run.sh` and `configs.py` and run `bash run.sh`. 
-
-
-## Notes 
-1. When producing the results for the submitted paper, we did not set `torch.backends.cudnn.deterministic` and `torch.backends.cudnn.benchmark` properly, thus causing non-deterministic behaviors. We have rerun our experiments and the updated numbers can be found here: https://docs.google.com/spreadsheets/d/1O1e9xdI1SxVvRWK9VVxcO8yefZhePAHGikypWfhRv8c/edit?usp=sharing. Although some of the numbers has changed, the conclusion in the paper remains unchanged. STARTUP is able to outperform all the baselines, bringing forth tremendous improvements to cross-domain few-shot learning. 
-2. All the trainings are done on Nvidia Titan RTX GPU. Evaluation of different representations are performed using Nvidia RTX 2080Ti. Regardless of the GPU models, CUDA11 is used.  
-3. This repo is built upon the official CD-FSL benchmark repo: https://github.com/IBM/cdfsl-benchmark/tree/9c6a42f4bb3d2638bb85d3e9df3d46e78107bc53. We thank the creators of the CD-FSL benchmark for releasing code to the public. 
-4. If you find this codebase or STARTUP useful, please consider citing our paper: 
 ```
-@inproceeding{phoo2021STARTUP,
-    title={Self-training for Few-shot Transfer Across Extreme Task Differences},
-    author={Phoo, Cheng Perng and Hariharan, Bharath},
-    booktitle={Proceedings of the International Conference on Learning Representations},
-    year={2021}
+@inproceedings{guo2020broader,
+  title={A broader study of cross-domain few-shot learning},
+  author={Guo, Yunhui and Codella, Noel C and Karlinsky, Leonid and Codella, James V and Smith, John R and Saenko, Kate and Rosing, Tajana and Feris, Rogerio},
+  year={2020},
+  organization={ECCV}
 }
 ```
+
+## Introduction
+
+The Cross-Domain Few-Shot Learning (CD-FSL) challenge benchmark includes data from the CropDiseases [1], EuroSAT [2], ISIC2018 [3-4], and ChestX [5] datasets, which covers plant disease images, satellite images, dermoscopic images of skin lesions, and X-ray images, respectively. The selected datasets reflect real-world use cases for few-shot learning since collecting enough examples from above domains is often difficult, expensive, or in some cases not possible. In addition, they demonstrate the following spectrum of readily quantifiable domain shifts from ImageNet: 1) CropDiseases images are most similar as they include perspective color images of natural elements, but are more specialized than anything available in ImageNet, 2) EuroSAT images are less similar as they have lost perspective distortion, but are still color images of natural scenes, 3) ISIC2018 images are even less similar as they have lost perspective distortion and no longer represent natural scenes, and 4) ChestX images are the most dissimilar as they have lost perspective distortion, all color, and do not represent natural scenes.
+
+## Datasets
+The following datasets are used for evaluation in this challenge:
+
+### Source domain: 
+
+* miniImageNet 
+<br/><br/>
+
+**The datasets below are used for relicating the results of the *Multi-model Selection* in the paper, for the challenge, only pre-trained model on miniImageNet is allowed**
+
+* CUB
+* CIFAR100
+* Caltech256
+* DTD (<https://www.robots.ox.ac.uk/~vgg/data/dtd/>)
+
+### Target domains: 
+
+* **EuroSAT**:
+
+    Home: http://madm.dfki.de/downloads
+
+    Direct: http://madm.dfki.de/files/sentinel/EuroSAT.zip
+
+* **ISIC2018**:
+
+    Home: http://challenge2018.isic-archive.com
+
+    Direct (must login): https://challenge.isic-archive.com/data#2018
+
+* **Plant Disease**:
+
+    Home: https://www.kaggle.com/saroz014/plant-disease/
+
+    Direct: command line `kaggle datasets download -d plant-disease/data`
+
+* **ChestX-Ray8**:
+
+    Home: https://www.kaggle.com/nih-chest-xrays/data
+
+    Direct: command line `kaggle datasets download -d nih-chest-xrays/data`
+
+## General information
+
+* **No meta-learning in-domain**
+* Only ImageNet based models or meta-learning allowed.
+* 5-way classification
+* n-shot, for varying n per dataset
+* 600 randomly selected few-shot 5-way trials up to 50-shot (scripts provided to generate the trials)
+* Average accuracy across all trials reported for evaluation.
+
+* **For generating the trials for evaluation, please refer to finetune.py and the examples below**
+
+## Specific Tasks:
+
+**EuroSAT**
+
+  • Shots: n = {5, 20, 50}
+
+**ISIC2018**
+
+  • Shots: n = {5, 20, 50}
+
+**Plant Disease**
+
+  • Shots: n = {5, 20, 50}
+
+**ChestX-Ray8**
+
+  • Shots: n = {5, 20, 50}
+
+
+## Unsupervised Track
+
+An optional second track has been included in this challenge that allows the use of a subset of unlabeled images from each dataset for study of un/self/semi-supervised learning methods. For learning and evaluation within each dataset, the images listed in text files contained in the `unsupervised-track` subfolder specific to each dataset may be used for such learning methods. Please see the website for additional information. 
+
+## Enviroment
+
+Python 3.5.5
+
+Pytorch 0.4.1
+
+h5py 2.9.0
+
+## Steps
+
+1. Download the datasets for evaluation (EuroSAT, ISIC2018, Plant Disease, ChestX-Ray8) using the above links.
+
+2. Download miniImageNet using <https://drive.google.com/file/d/1uxpnJ3Pmmwl-6779qiVJ5JpWwOGl48xt/view?usp=sharing>
+
+3. Download CUB if multi-model selection is used.
+
+```bash
+    Change directory to ./filelists/CUB
+    run source ./download_CUB.sh
+```
+
+4. Change configuration file `./configs.py` to reflect the correct paths to each dataset. Please see the existing example paths for information on which subfolders these paths should point to.
+
+5. Train base models on miniImageNet
+
+    • *Standard supervised learning on miniImageNet*
+
+    ```bash
+        python ./train.py --dataset miniImageNet --model ResNet10  --method baseline --train_aug
+    ```
+
+    • *Train meta-learning method (protonet) on miniImageNet*
+
+    ```bash
+        python ./train.py --dataset miniImageNet --model ResNet10  --method protonet --n_shot 5 --train_aug
+    ```
+
+6. Save features for evaluation (optional, if there is no need to adapt the features during testing) 
+
+    • *Save features for testing*
+
+    ```bash
+        python save_features.py --model ResNet10 --method baseline --dataset CropDisease --n_shot 5 --train_aug
+    ```
+
+7. Test with saved features (optional, if there is no need to adapt the features during testing) 
+
+    ```bash
+        python test_with_saved_features.py --model ResNet10 --method baseline --dataset CropDisease --n_shot 5 --train_aug
+    ```
+
+8. Test
+
+    • *Finetune with frozen model backbone*: 
+ 
+    ```bash
+        python finetune.py --model ResNet10 --method baseline  --train_aug --n_shot 5 --freeze_backbone
+    ```
+
+    • *Finetune*
+
+    ```bash
+        python finetune.py --model ResNet10 --method baseline  --train_aug --n_shot 5 
+    ```
+    
+    • *Example output:* 600 Test Acc = 49.91% +- 0.44%
+
+9. Test with Multi-model selection (make sure you have trained models on all the source domains (miniImageNet, CUB, Caltech256, CIFAR100, DTD))
+
+    • *Test Multi-model selection without fine-tuning*: 
+   
+    ```bash
+       python model_selection.py --model ResNet10 --method baseline  --train_aug --n_shot 5 
+    ```
+
+    • *Test Multi-model selection without fine-tuning*: 
+  
+     ```bash
+       python model_selection.py --model ResNet10 --method baseline  --train_aug --n_shot 5 --fine_tune_all_models
+     ```
+
+10. For testing your own methods, simply replace the function **finetune()** in `finetune.py` with your own method. Your method should at least have the following arguments,
+
+    • *novel_loader: data loader for the corresponding dataset (EuroSAT, ISIC2018, Plant Disease, ChestX-Ray8)*
+
+    • *n_query: number of query images per class*
+
+    • *n_way: number of shots*
+
+    • *n_support: number of support images per class*
+
+## References
+
+[1] Sharada P Mohanty, David P Hughes, and Marcel Salathe. Using deep learning for image
+based plant disease detection. Frontiers in plant science, 7:1419, 2016
+
+[2] Patrick Helber, Benjamin Bischke, Andreas Dengel, and Damian Borth. Eurosat: A novel
+dataset and deep learning benchmark for land use and land cover classification. IEEE Journal of
+Selected Topics in Applied Earth Observations and Remote Sensing , 12(7):2217–2226, 2019.
+
+[3] Philipp Tschandl, Cliff Rosendahl, and Harald Kittler. The ham10000 dataset, a large
+collection of multi-source dermatoscopic images of common pigmented skin lesions.
+Scientific data, 5:180161, 2018.
+
+[4] Noel Codella, Veronica Rotemberg, Philipp Tschandl, M Emre Celebi, Stephen
+Dusza, David Gutman, Brian Helba, Aadi Kalloo, Konstantinos Liopyris, Michael
+Marchetti, et al. Skin lesion analysis toward melanoma detection 2018: A challenge
+hosted by the international skin imaging collaboration (isic). arXiv preprint.
+arXiv:1902.03368, 2019
+
+[5] Xiaosong Wang, Yifan Peng, Le Lu, Zhiyong Lu, Mohammadhadi Bagheri, and Ronald
+M Summers. Chestx-ray8: Hospital-scale chest x-ray database and benchmarks on weakly
+supervised classification and localization of common thorax diseases. In Proceedings of the
+IEEE conference on computer vision and pattern recognition, pages 2097–2106, 2017
+
