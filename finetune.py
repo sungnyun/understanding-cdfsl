@@ -64,6 +64,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         else:
             modelfile   = get_best_file(checkpoint_dir)
 
+        if not modelfile or not os.path.exists(modelfile):
+            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
         tmp = torch.load(modelfile)
         state = tmp['state']
 
@@ -236,7 +238,7 @@ if __name__=='__main__':
 
     params.n_shot = 1
     few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
-   
+
     if params.method == 'baseline' or params.method == 'baseline_body':
         # params.num_classes = 64
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')

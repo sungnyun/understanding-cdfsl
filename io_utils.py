@@ -6,7 +6,7 @@ import backbone
 
 def parse_args(script):
     parser = argparse.ArgumentParser(description= 'few-shot script %s' %(script))
-    parser.add_argument('--dataset'     , default='miniImagenet',        help='training base model')
+    parser.add_argument('--dataset'     , default='miniImageNet',        help='training base model')
     parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture') 
     parser.add_argument('--method'      , default='baseline',   help='baseline/protonet/maml') 
     parser.add_argument('--train_n_way' , default=5, type=int,  help='class num to classify for training')
@@ -41,6 +41,7 @@ def get_assigned_file(checkpoint_dir,num):
 def get_resume_file(checkpoint_dir):
     filelist = glob.glob(os.path.join(checkpoint_dir, '*.tar'))
     if len(filelist) == 0:
+        print('Warning: unable to locate *.tar checkpoint file in {}'.format(checkpoint_dir))
         return None
 
     filelist =  [ x  for x in filelist if os.path.basename(x) != 'best_model.tar' ]
