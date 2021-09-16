@@ -25,7 +25,7 @@ from io_utils import parse_args, get_resume_file, get_best_file, get_assigned_fi
 
 from utils import *
 
-from datasets import ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
+from datasets import miniImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
 
 class Classifier(nn.Module):
@@ -33,6 +33,9 @@ class Classifier(nn.Module):
         super(Classifier, self).__init__()
         # self.relu = nn.ReLU()
         self.fc = nn.Linear(dim, n_way)
+        
+        with torch.no_grad():
+            self.fc.bias.data.fill_(0.)
 
     def forward(self, x):
         # x = self.relu(x)
@@ -46,6 +49,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
     
     if params.method in ['baseline', 'baseline++', 'baseline_body']:
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
+        df_nil = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
     elif params.method in ['maml', 'boil']:
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['Accuracy'])
         acc_all = []
@@ -54,6 +58,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         ###############################################################################################
         if params.method in ['baseline', 'baseline++', 'baseline_body']:
             task_all = []
+            task_all_nil = []
         
         # load pretrained model on miniImageNet
         params.save_iter = -1
@@ -66,6 +71,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
         if not modelfile or not os.path.exists(modelfile):
             raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
+            
         tmp = torch.load(modelfile)
         state = tmp['state']
 
@@ -88,6 +94,10 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
             classifier.cuda()
             classifier.train()
+            
+            # with torch.no_grad():
+            #     classifier.fc.weight.data = torch.stack([torch.mean(pretrained_model.classifier.weight.data[:64], dim=0)]*n_way)
+            
             if freeze_backbone is False:
 #                 var_init = 0.1
 #                 pretrained_model.feature.trunk[1].running_mean.data.fill_(0.)
@@ -119,17 +129,20 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 #                 pretrained_model.feature.trunk[7].BNshortcut.running_mean.data.fill_(0.)
 #                 pretrained_model.feature.trunk[7].BNshortcut.running_var.data.fill_(var_init)
                 
-                # for name, p in pretrained_model.named_parameters():
-                #     if 'trunk.7' in name:
-                #         if 'BN' in name:
-                #             if 'weight' in name:
-                #                 p.data.fill_(1.)
-                #             else:
-                #                 p.data.fill_(0.)
-                #         else:
-                #             # p.data[48:,:,:,:].fill_(0.)
-                #             # half = p.data.shape[0] // 2
-                #             nn.init.kaiming_uniform_(p.data, a=math.sqrt(5)) # p.data[half:,:,:,:]
+#                 for name, p in pretrained_model.named_parameters():
+#                     if 'trunk.7' in name:
+#                         if 'BN' in name:
+#                             if 'weight' in name:
+#                                 p.data.fill_(1.)
+#                             else:
+#                                 p.data.fill_(0.)
+#                         else:
+#                             # r = 0.5
+#                             # r_dim = int(p.data.shape[0] * r)
+#                             # p.data[r_dim:,:,:,:].fill_(0.)
+#                             # p.data[48:,:,:,:].fill_(0.)
+#                             # half = p.data.shape[0] // 2
+#                             nn.init.kaiming_uniform_(p.data, a=math.sqrt(5)) # p.data[half:,:,:,:] (from pytorch default)
                 
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
         
@@ -151,9 +164,10 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             support_size = n_way * n_support
             
             if freeze_backbone:
-                result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}_freeze.csv'.format(n_way, n_support, finetune_epoch, batch_size)) # _LBreinit
+                result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}_freeze_LBreinit.csv'.format(n_way, n_support, finetune_epoch, batch_size)) # _LBreinit
             else:
-                result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}.csv'.format(n_way, n_support, finetune_epoch, batch_size))
+                result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}_Clas.csv'.format(n_way, n_support, finetune_epoch, batch_size))
+                # result_nil_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}_Block4_NIL.csv'.format(n_way, n_support, finetune_epoch, batch_size))
 
             for epoch in range(finetune_epoch):
                 pretrained_model.train()
@@ -181,21 +195,38 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                     if freeze_backbone is False:
                         delta_opt.step()
 
-                pretrained_model.eval()
-                classifier.eval()
-                scores = classifier(pretrained_model.feature(x_b_i.cuda()))
-                
-                y_query = np.repeat(range( n_way ), n_query )
-                topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
-                topk_ind = topk_labels.cpu().numpy()
+                with torch.no_grad():
+                    pretrained_model.eval()
+                    classifier.eval()
+                    y_query = np.repeat(range( n_way ), n_query )
+                    
+                    scores = classifier(pretrained_model.feature(x_b_i.cuda()))
+                    topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
+                    topk_ind = topk_labels.cpu().numpy()
 
-                top1_correct = np.sum(topk_ind[:,0] == y_query)
-                correct_this, count_this = float(top1_correct), len(y_query)
-                # print (correct_this/ count_this *100)
-                task_all.append((correct_this/ count_this *100))
+                    top1_correct = np.sum(topk_ind[:,0] == y_query)
+                    correct_this, count_this = float(top1_correct), len(y_query)
+                    # print (correct_this/ count_this *100)
+                    task_all.append((correct_this/count_this*100))
+                    
+#                     nil_cls = torch.zeros([5, 512])
+#                     for i in range(5):
+#                         cls_idx = y_a_i==i
+#                         nil_cls[i] = torch.mean(pretrained_model.feature(x_a_i)[cls_idx].cpu(), dim=0)
+#                     scores = torch.mm(pretrained_model.feature(x_b_i).cpu(), nil_cls.T)
+#                     topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
+#                     topk_ind = topk_labels.cpu().numpy()
+
+#                     top1_correct = np.sum(topk_ind[:,0] == y_query)
+#                     correct_this, count_this = float(top1_correct), len(y_query)
+#                     # print (correct_this/ count_this *100)
+#                     task_all_nil.append((correct_this/count_this*100))
+                    
             df.loc[task_num+1] = task_all
             df.to_csv(result_path)
-                
+            # df_nil.loc[task_num+1] = task_all_nil
+            # df_nil.to_csv(result_nil_path)
+            
         elif params.method in ['maml', 'boil']:                
             scores = pretrained_model.set_forward(x)
 
@@ -236,7 +267,7 @@ if __name__=='__main__':
     image_size = 224
     iter_num = 600
 
-    params.n_shot = 1
+    params.n_shot = 5
     few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
 
     if params.method == 'baseline' or params.method == 'baseline_body':
@@ -260,10 +291,12 @@ if __name__=='__main__':
 
     freeze_backbone = params.freeze_backbone
     #########################################################################
-    dataset_names = ["CropDisease", "EuroSAT", "ISIC", "ChestX"]
+    dataset_names = ["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"]
     for dataset_name in dataset_names:
         print (dataset_name)
-        if dataset_name == "CropDisease":
+        if dataset_name == "miniImageNet":
+            datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, **few_shot_params)
+        elif dataset_name == "CropDisease":
             datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
         elif dataset_name == "EuroSAT":
             datamgr = EuroSAT_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
@@ -271,7 +304,11 @@ if __name__=='__main__':
             datamgr = ISIC_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
         elif dataset_name == "ChestX":
             datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
-        novel_loader = datamgr.get_data_loader(aug=False)
+            
+        if dataset_name == "miniImageNet":
+            novel_loader = datamgr.get_data_loader(aug=False, train=False)
+        else:
+            novel_loader = datamgr.get_data_loader(aug=False)
 
         # replace finetine() with your own method
         finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)

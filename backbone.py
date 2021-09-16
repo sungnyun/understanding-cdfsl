@@ -45,7 +45,6 @@ class Flatten(nn.Module):
 
     def forward(self, x):
         return x.view(x.size(0), -1)
-        return x.view(x.size(0), -1)
 
 # For meta-learning based algorithms (task-specific weight)
 class Linear_fw(nn.Linear): #used in MAML to forward input with fast weight
@@ -253,6 +252,17 @@ class ResNet(nn.Module):
     def forward(self,x):
         out = self.trunk(x)
         return out
+    
+    def return_features(self,x):
+        flat = Flatten()
+        m = nn.AdaptiveAvgPool2d((1,1))
+
+        with torch.no_grad():
+            block1_out = self.trunk[4](self.trunk[3](self.trunk[2](self.trunk[1](self.trunk[0](x)))))
+            block2_out = self.trunk[5](block1_out)
+            block3_out = self.trunk[6](block2_out)
+            block4_out = self.trunk[7](block3_out)
+        return flat(block1_out), flat(block2_out), flat(block3_out), flat(block4_out), flat(m(block4_out))
 
 def ResNet10(method):
     return ResNet(method, block=SimpleBlock, list_of_num_layers=[1,1,1,1], list_of_out_dims=[64,128,256,512], flatten=True)

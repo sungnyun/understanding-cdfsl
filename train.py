@@ -61,9 +61,9 @@ if __name__=='__main__':
 
     if params.method in ['baseline', 'baseline++', 'baseline_body'] :
         if params.dataset == "miniImageNet":
-            datamgr = miniImageNet_few_shot.SimpleDataManager(image_size, batch_size = 16)
+            datamgr = miniImageNet_few_shot.SimpleDataManager(image_size, batch_size = 32)
             base_loader = datamgr.get_data_loader(aug = params.train_aug)
-            # params.num_classes = 64
+            params.num_classes = 64
         else:
             raise ValueError('Unknown dataset')
 
@@ -97,7 +97,7 @@ if __name__=='__main__':
     model = model.cuda()
     save_dir = configs.save_dir
 
-    params.checkpoint_dir = '%s/checkpoints/%s/%s_%s_lrsche' %(save_dir, params.dataset, params.model, params.method)
+    params.checkpoint_dir = '%s/checkpoints/%s/%s_%s_bs32' %(save_dir, params.dataset, params.model, params.method)
     if params.train_aug:
         params.checkpoint_dir += '_aug'
 

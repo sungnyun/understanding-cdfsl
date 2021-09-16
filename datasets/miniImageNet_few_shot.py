@@ -19,7 +19,7 @@ from configs import *
 
 identity = lambda x:x
 class SimpleDataset:
-    def __init__(self, transform, target_transform=identity):
+    def __init__(self, transform, train, target_transform=identity):
         self.transform = transform
         self.target_transform = target_transform
 
@@ -28,8 +28,11 @@ class SimpleDataset:
         self.meta['image_names'] = []
         self.meta['image_labels'] = []
 
-        d = ImageFolder(miniImageNet_path)
-
+        if train:
+            d = ImageFolder(miniImageNet_path)
+        else:
+            d = ImageFolder(miniImageNet_test_path)
+            
         for i, (data, label) in enumerate(d):
             self.meta['image_names'].append(data)
             self.meta['image_labels'].append(label)  
@@ -45,15 +48,21 @@ class SimpleDataset:
         return len(self.meta['image_names'])
 
 class SetDataset:
-    def __init__(self, batch_size, transform):
+    def __init__(self, batch_size, transform, train):
 
         self.sub_meta = {}
-        self.cl_list = range(64)
+        if train:
+            self.cl_list = range(64)
+        else:
+            self.cl_list = range(20)
 
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        d = ImageFolder(miniImageNet_path)
+        if train:
+            d = ImageFolder(miniImageNet_path)
+        else:
+            d = ImageFolder(miniImageNet_test_path)
 
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
@@ -150,9 +159,9 @@ class SimpleDataManager(DataManager):
         self.batch_size = batch_size
         self.trans_loader = TransformLoader(image_size)
 
-    def get_data_loader(self, aug): #parameters that would change on train/val set
+    def get_data_loader(self, aug, train=True): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SimpleDataset(transform)
+        dataset = SimpleDataset(transform, train)
 
         data_loader_params = dict(batch_size = self.batch_size, shuffle = True, num_workers = 12, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
@@ -160,19 +169,19 @@ class SimpleDataManager(DataManager):
         return data_loader
 
 class SetDataManager(DataManager):
-    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100):        
+    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_episode = 100):        
         super(SetDataManager, self).__init__()
         self.image_size = image_size
         self.n_way = n_way
         self.batch_size = n_support + n_query
-        self.n_eposide = n_eposide
+        self.n_episode = n_episode
 
         self.trans_loader = TransformLoader(image_size)
 
-    def get_data_loader(self, aug): #parameters that would change on train/val set
+    def get_data_loader(self, aug, train=True): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SetDataset(self.batch_size, transform)
-        sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide )  
+        dataset = SetDataset(self.batch_size, transform, train)
+        sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_episode )  
         data_loader_params = dict(batch_sampler = sampler,  num_workers = 12, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
         return data_loader
