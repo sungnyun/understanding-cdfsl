@@ -1,5 +1,7 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
 
+import os
+import copy
 import torch
 from PIL import Image
 import numpy as np
@@ -16,6 +18,31 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 import sys
 sys.path.append("../")
 from configs import *
+
+
+def construct_subset(dataset, split):
+    split = './datasets/split_seed_1/CropDisease_labeled_80.csv'
+    split = pd.read_csv(split)['img_path'].values
+    root = dataset.root
+
+    class_to_idx = dataset.class_to_idx
+
+    # create targets
+    targets = [class_to_idx[os.path.dirname(i)] for i in split]
+
+    # image_names = np.array([i[0] for i in dataset.imgs])
+
+    # # ind
+    # ind = np.concatenate(
+    #     [np.where(image_names == os.path.join(root, j))[0] for j in split])
+
+    image_names = [os.path.join(root, j) for j in split]
+    dataset_subset = copy.deepcopy(dataset)
+
+    dataset_subset.samples = [j for j in zip(image_names, targets)]
+    dataset_subset.imgs = dataset_subset.samples
+    dataset_subset.targets = targets
+    return dataset_subset
 
 identity = lambda x:x
 class SimpleDataset:
@@ -47,7 +74,7 @@ class SimpleDataset:
 
 
 class SetDataset:
-    def __init__(self, batch_size, transform):
+    def __init__(self, batch_size, transform, split):
 
         self.sub_meta = {}
         self.cl_list = range(38)
@@ -57,6 +84,9 @@ class SetDataset:
 
         d = ImageFolder(CropDisease_path + "/dataset/train/")
 
+        if split:
+            print("Using Split: ", split)
+            d = construct_subset(d, split)
 
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
@@ -164,7 +194,7 @@ class SimpleDataManager(DataManager):
         return data_loader
 
 class SetDataManager(DataManager):
-    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100):        
+    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100, split=False):        
         super(SetDataManager, self).__init__()
         self.image_size = image_size
         self.n_way = n_way
@@ -172,10 +202,11 @@ class SetDataManager(DataManager):
         self.n_eposide = n_eposide
 
         self.trans_loader = TransformLoader(image_size)
+        self.split = split
 
     def get_data_loader(self, aug): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SetDataset(self.batch_size, transform)
+        dataset = SetDataset(self.batch_size, transform, self.split)
         sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide )  
         data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)

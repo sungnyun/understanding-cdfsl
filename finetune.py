@@ -145,7 +145,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
     result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
-
+    
     for task_num, (x, y) in tqdm(enumerate(novel_loader)):
         ###############################################################################################
         if params.method in ['baseline', 'baseline++', 'baseline_body']:
@@ -185,7 +185,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
             classifier.cuda()
             classifier.train()
-
+            
             # with torch.no_grad():
             #     classifier.fc.weight.data = torch.stack([torch.mean(pretrained_model.classifier.weight.data[:64], dim=0)]*n_way)
 
@@ -195,7 +195,6 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
-
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
         loss_fn = nn.CrossEntropyLoss().cuda()
@@ -214,7 +213,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
         if params.method in ['baseline', 'baseline++', 'baseline_body']:
             support_size = n_way * n_support
-
+            
             for epoch in range(finetune_epoch):
                 pretrained_model.train()
                 classifier.train()
@@ -313,7 +312,7 @@ if __name__=='__main__':
     image_size = 224
     iter_num = 600
 
-    params.n_shot = 5
+    # params.n_shot = 5
     few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
 
     if params.method == 'baseline' or params.method == 'baseline_body':
@@ -337,24 +336,28 @@ if __name__=='__main__':
 
     freeze_backbone = params.freeze_backbone
     #########################################################################
-    dataset_names = ["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"]
+    dataset_names = ["CropDisease", "EuroSAT", "ISIC", "ChestX"] # "miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"]
+    split = True
     for dataset_name in dataset_names:
         print (dataset_name)
         if dataset_name == "miniImageNet":
-            datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, **few_shot_params)
+            datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "CropDisease":
-            datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
+            datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "EuroSAT":
-            datamgr = EuroSAT_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
+            datamgr = EuroSAT_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "ISIC":
-            datamgr = ISIC_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
+            datamgr = ISIC_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "ChestX":
-            datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, **few_shot_params)
-
+            datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
+        
         if dataset_name == "miniImageNet":
             novel_loader = datamgr.get_data_loader(aug=False, train=False)
         else:
             novel_loader = datamgr.get_data_loader(aug=False)
 
+        if split:
+            dataset_name += '_split'
+            
         # replace finetine() with your own method
         finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)

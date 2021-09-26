@@ -17,7 +17,7 @@ sys.path.append("../")
 from configs import *
 
 class CustomDatasetFromImages(Dataset):
-    def __init__(self, csv_path=ChestX_path+"/Data_Entry_2017.csv", \
+    def __init__(self, split, csv_path=ChestX_path+"/Data_Entry_2017.csv", \
         image_path = ChestX_path+"/images/"):
         """
         Args:
@@ -55,7 +55,21 @@ class CustomDatasetFromImages(Dataset):
         self.data_len = len(self.image_name)
 
         self.image_name = np.asarray(self.image_name)
-        self.labels = np.asarray(self.labels)        
+        self.labels = np.asarray(self.labels)
+        
+        if split:
+            print("Using Split: ", split)
+            split = './datasets/split_seed_1/ChestX_labeled_80.csv'
+            split = pd.read_csv(split)['img_path'].values
+            # construct the index
+            ind = np.concatenate(
+                [np.where(self.image_name == j)[0] for j in split])
+            self.image_name = self.image_name[ind]
+            self.labels = self.labels[ind]
+            self.data_len = len(split)
+
+            assert len(self.image_name) == len(split)
+            assert len(self.labels) == len(split)
 
     def __getitem__(self, index):
         # Get image name from the pandas df
@@ -107,7 +121,7 @@ class SimpleDataset:
 
 
 class SetDataset:
-    def __init__(self, batch_size, transform):
+    def __init__(self, batch_size, transform, split):
 
         self.sub_meta = {}
         self.cl_list = range(7)
@@ -116,7 +130,7 @@ class SetDataset:
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        d = CustomDatasetFromImages()
+        d = CustomDatasetFromImages(split=split)
 
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
@@ -229,7 +243,7 @@ class SimpleDataManager(DataManager):
         return data_loader
 
 class SetDataManager(DataManager):
-    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100):        
+    def __init__(self, image_size, n_way=5, n_support=5, n_query=16, n_eposide = 100, split=False):        
         super(SetDataManager, self).__init__()
         self.image_size = image_size
         self.n_way = n_way
@@ -237,10 +251,11 @@ class SetDataManager(DataManager):
         self.n_eposide = n_eposide
 
         self.trans_loader = TransformLoader(image_size)
+        self.split = split
 
     def get_data_loader(self, aug): #parameters that would change on train/val set
         transform = self.trans_loader.get_composed_transform(aug)
-        dataset = SetDataset(self.batch_size, transform)
+        dataset = SetDataset(self.batch_size, transform, self.split)
         sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide )  
         data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
