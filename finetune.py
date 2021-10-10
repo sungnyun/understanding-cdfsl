@@ -240,19 +240,20 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                     if freeze_backbone is False:
                         delta_opt.step()
 
-                with torch.no_grad():
-                    pretrained_model.eval()
-                    classifier.eval()
-                    y_query = np.repeat(range( n_way ), n_query )
+                if (not params.no_tracking) or (epoch+1 == finetune_epoch):
+                    with torch.no_grad():
+                        pretrained_model.eval()
+                        classifier.eval()
+                        y_query = np.repeat(range( n_way ), n_query )
 
-                    scores = classifier(pretrained_model.feature(x_b_i.cuda()))
-                    topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
-                    topk_ind = topk_labels.cpu().numpy()
+                        scores = classifier(pretrained_model.feature(x_b_i.cuda()))
+                        topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
+                        topk_ind = topk_labels.cpu().numpy()
 
-                    top1_correct = np.sum(topk_ind[:,0] == y_query)
-                    correct_this, count_this = float(top1_correct), len(y_query)
-                    # print (correct_this/ count_this *100)
-                    task_all.append((correct_this/count_this*100))
+                        top1_correct = np.sum(topk_ind[:,0] == y_query)
+                        correct_this, count_this = float(top1_correct), len(y_query)
+                        # print (correct_this/ count_this *100)
+                        task_all.append((correct_this/count_this*100))
 
 #                     nil_cls = torch.zeros([5, 512])
 #                     for i in range(5):
@@ -266,6 +267,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 #                     correct_this, count_this = float(top1_correct), len(y_query)
 #                     # print (correct_this/ count_this *100)
 #                     task_all_nil.append((correct_this/count_this*100))
+                else:
+                    task_all.append(0.0)
 
             df.loc[task_num+1] = task_all
             df.to_csv(result_path)

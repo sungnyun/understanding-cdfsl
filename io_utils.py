@@ -26,6 +26,7 @@ def parse_args(script):
         # For fine-tuning
         parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
+        parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
     elif script == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want 
         parser.add_argument('--save_iter', default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
