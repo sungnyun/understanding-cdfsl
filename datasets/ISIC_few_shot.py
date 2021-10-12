@@ -86,7 +86,7 @@ class SimpleDataset:
         self.meta['image_labels'] = []
 
 
-        d = CustomDatasetFromImages()
+        d = CustomDatasetFromImages(split=False)
         for i, (data, label) in enumerate(d):
             self.meta['image_names'].append(data)
             self.meta['image_labels'].append(label)  
