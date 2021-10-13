@@ -35,6 +35,12 @@ MANUAL_REINIT_BLOCKS = [1]
 MANUAL_REINIT_BN_STATS = False
 
 
+STARTUP_METHODS = [
+    'startup',
+    'startup_both_body',  # teacher body + student body
+    'startup_student_body',  # teacher full + student body
+]
+
 class Classifier(nn.Module):
     def __init__(self, dim, n_way):
         super(Classifier, self).__init__()
@@ -76,6 +82,54 @@ def reinit_blocks(model, block_indices: List[int]):
     return model
 
 
+def partial_reinit(model):
+    """
+    Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
+
+    :param model:
+    :return:
+    """
+    targets = {  # ResNet10 - block 4
+        'trunk.7.C2',
+        'trunk.7.BN2',
+        'trunk.7.shortcut',
+        'trunk.7.BNshortcut',
+    }
+    consumed = set()
+    for name, p in model.named_parameters():
+        for target in targets:
+            if target in name:
+                if 'BN' in name:
+                    if 'weight' in name:
+                        p.data.fill_(1.)
+                    else:
+                        p.data.fill_(0.)
+                else:
+                    # p.data[48:,:,:,:].fill_(0.)
+                    # half = p.data.shape[0] // 2
+                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5)) # p.data[half:,:,:,:]
+                consumed.add(target)
+
+    remaining = targets - consumed
+    if remaining:
+        raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
+
+    return model
+
+
+def mv_init(model):
+    # print('Mean-var init')
+    # print('-' * 80)
+    for name, p in model.named_parameters():
+        if 'classifier' not in name:
+            mean, var = p.data.mean(), p.data.var()
+            # print('{:40s} {:<8.4f} {:<8.4}'.format(name, mean, var))
+            nn.init.normal_(p.data, mean, var)
+    # print('-' * 80)
+
+    return model
+
+
 def reinit_running_batch_statistics(model, var_init=0.1):
     model.feature.trunk[1].running_mean.data.fill_(0.)
     model.feature.trunk[1].running_var.data.fill_(var_init)
@@ -113,7 +167,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
     finetune_epoch = 100
     batch_size = 4
 
-    if params.method in ['baseline', 'baseline++', 'baseline_body']:
+    if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
         df_nil = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
     elif params.method in ['maml', 'boil']:
@@ -125,8 +179,19 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         print('Using manual hard-coded re-init arguments')
         params.reinit_blocks = MANUAL_REINIT_BLOCKS
         params.reinit_bn_stats = MANUAL_REINIT_BN_STATS
+
+    reinit_arguments = [
+        bool(params.reinit_blocks), bool(params.partial_reinit),
+    ]
+    if sum(reinit_arguments) > 1:
+        raise Exception('Cannot apply multiple reinit arguments at the same time')
+
+    if params.mv_init:
+        print('Mean-var re-init (full network)')
     if params.reinit_blocks:
         print('Re-initializing blocks {} (one-index)'.format(params.reinit_blocks))
+    if params.partial_reinit:
+        print('Re-initializing specific layers from last block (partial reinit)')
     if params.reinit_bn_stats:
         print('Re-initializing all running batch statistics')
 
@@ -134,9 +199,13 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
     suffixes = ['']
     if freeze_backbone:
         suffixes.append('freeze')
+    if params.mv_init:
+        suffixes.append('mvinit')
     if params.reinit_blocks:
         blocks_string = ''.join([str(i) for i in params.reinit_blocks])
         suffixes.append('reinitblock{}'.format(blocks_string))  # changed from LBreinit
+    if params.partial_reinit:
+        suffixes.append('pr')
     if params.reinit_bn_stats:
         suffixes.append('reinitbn'.format(params.reinit_bn_stats))
     # suffixes.append('nil'.format(params.reinit_bn_stats))
@@ -145,26 +214,41 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
     result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
-    
+
+    # Determine model weights path
+    params.save_iter = -1
+    if params.method in STARTUP_METHODS:  # startup methods apply pre-training separately to each target dataset
+        if '_split' in dataset_name:  # hotfix -- startup always uses split
+            assert ('_split' == dataset_name[-6:])
+            dataset_name = dataset_name[:-6]
+        model_dir = '{}_unlabeled_20'.format(dataset_name)
+        modelfile = os.path.join(checkpoint_dir, model_dir, 'checkpoint_best.pkl')
+    else:
+        if params.save_iter != -1:
+            modelfile = get_assigned_file(checkpoint_dir, params.save_iter)
+        elif params.method in ['baseline', 'baseline++', 'baseline_body']:
+            modelfile = get_resume_file(checkpoint_dir)
+        else:
+            modelfile = get_best_file(checkpoint_dir)
+
+    if not modelfile or not os.path.exists(modelfile):
+        raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
+    print('Using model weights path {}'.format(modelfile))
+
     for task_num, (x, y) in tqdm(enumerate(novel_loader)):
         ###############################################################################################
-        if params.method in ['baseline', 'baseline++', 'baseline_body']:
+        if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             task_all = []
             task_all_nil = []
 
         # load pretrained model on miniImageNet
-        params.save_iter = -1
-        if params.save_iter != -1:
-            modelfile   = get_assigned_file(checkpoint_dir, params.save_iter)
-        elif params.method in ['baseline', 'baseline++', 'baseline_body'] :
-            modelfile   = get_resume_file(checkpoint_dir)
-        else:
-            modelfile   = get_best_file(checkpoint_dir)
 
-        if not modelfile or not os.path.exists(modelfile):
-            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
-        tmp = torch.load(modelfile)
-        state = tmp['state']
+        if params.method in STARTUP_METHODS:
+            tmp = torch.load(modelfile)  # note, tmp is only used to load the model weights
+            state = tmp['model']  # state dict of *backbone* (from STARTUP student .pkl file)
+        else:
+            tmp = torch.load(modelfile)
+            state = tmp['state']  # state dict
 
         # state_keys = list(state.keys())
         # for _, key in enumerate(state_keys):
@@ -174,13 +258,16 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         #     else:
         #         state[newkey] = state.pop(key)
 
-        pretrained_model.load_state_dict(state, strict=True)
+        if params.method in STARTUP_METHODS:  # extractor state_dict is saved separately in startup code
+            pretrained_model.feature.load_state_dict(state, strict=True)
+        else:
+            pretrained_model.load_state_dict(state, strict=True)
         pretrained_model.cuda()
         pretrained_model.train()
 
         ###############################################################################################
 
-        if params.method in ['baseline', 'baseline++', 'baseline_body']:
+        if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             classifier = Classifier(pretrained_model.feature.final_feat_dim, n_way)
             classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
             classifier.cuda()
@@ -191,8 +278,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
             if freeze_backbone is False:
                 # [CVPR2022] Re-initialization
+                if params.mv_init:
+                    mv_init(pretrained_model)
                 if params.reinit_bn_stats:
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
+                if params.partial_reinit:
+                    partial_reinit(pretrained_model)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
@@ -211,7 +302,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
         ###############################################################################################
 
-        if params.method in ['baseline', 'baseline++', 'baseline_body']:
+        if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             support_size = n_way * n_support
             
             for epoch in range(finetune_epoch):
@@ -318,7 +409,7 @@ if __name__=='__main__':
     # params.n_shot = 5
     few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
 
-    if params.method == 'baseline' or params.method == 'baseline_body':
+    if params.method in ['baseline', 'baseline_body'] + STARTUP_METHODS:
         # params.num_classes = 64
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     elif params.method == 'baseline++':
@@ -329,20 +420,23 @@ if __name__=='__main__':
         pretrained_model = BOIL(model_dict[params.model], **few_shot_params)
     elif params.method == 'protonet':
         pretrained_model = ProtoNet(model_dict[params.model], **few_shot_params)
+    else:
+        raise ValueError('Invalid `method` argument: {}'.format(params.method))
 
     pretrained_dataset = params.dataset
     checkpoint_dir = '%s/checkpoints/%s/%s_%s' %(configs.save_dir, pretrained_dataset, params.model, params.method)
     if params.train_aug:
         checkpoint_dir += '_aug'
-    if not params.method  in ['baseline', 'baseline++', 'baseline_body']: 
+    if not params.method  in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
 
     freeze_backbone = params.freeze_backbone
     #########################################################################
-    dataset_names = ["CropDisease", "EuroSAT", "ISIC", "ChestX"] # "miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"]
-    split = True
+    dataset_names = params.dataset_names
+    split = params.startup_split
     for dataset_name in dataset_names:
         print (dataset_name)
+        print('Initializing data loader...')
         if dataset_name == "miniImageNet":
             datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "CropDisease":
@@ -361,6 +455,8 @@ if __name__=='__main__':
 
         if split:
             dataset_name += '_split'
-            
+
+        print('Data loader initialized successfully!')
+
         # replace finetine() with your own method
         finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)

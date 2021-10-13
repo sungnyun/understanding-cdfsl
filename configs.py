@@ -1,6 +1,7 @@
 save_dir                    = './logs'
 
 miniImageNet_path           	= '/data/cdfsl/miniImagenet'
+#miniImageNet_test_path          = '/data/cdfsl/miniImagenet_test_student'  # for startup
 miniImageNet_test_path          = '/data/cdfsl/miniImagenet_test'
 DTD_path 						= '/ssd/dtd/images/'
 
