@@ -268,7 +268,7 @@ class Block(torch.nn.Module):
         self.C2 = nn.Conv2d(no, no, 3, 1, padding=1, bias=False)
         self.BN2 = nn.BatchNorm2d(no, track_running_stats=track_bn)
         if stride == 2 or ni != no:
-            self.shortcut = nn.Conv2d(ni, no, 1, stride=1, padding=0)
+            self.shortcut = nn.Conv2d(ni, no, 1, stride=1, padding=0, bias=False)
             self.BNshortcut = nn.BatchNorm2d(no, track_running_stats=track_bn)
 
     def get_parameters(self):
@@ -289,7 +289,7 @@ class Block(torch.nn.Module):
         out = self.C2(out)
         out = self.BN2(out)
         out += self.BNshortcut(self.shortcut(x))
-        out = self.relu(out)
+        out = F.relu(out)
         
         return out
     

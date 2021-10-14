@@ -77,19 +77,30 @@ def reinit_blocks(model, block_indices: List[int]):
 
     return model
 
-def partial_reinit(model):
+def partial_reinit(model, model_name):
     """
     Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
 
     :param model:
     :return:
     """
-    targets = {  # ResNet10 - block 4
-        'trunk.7.C2',
-        'trunk.7.BN2',
-        'trunk.7.shortcut',
-        'trunk.7.BNshortcut',
-    }
+    if model_name == 'ResNet10':
+        targets = {  # ResNet10 - block 4
+            'trunk.7.C2',
+            'trunk.7.BN2',
+            'trunk.7.shortcut',
+            'trunk.7.BNshortcut',
+        }
+    elif model_name == 'ResNet12':
+        targets = {  # ResNet12 - block 4
+            'group_3.C2',
+            'group_3.BN2',
+            'group_3.shortcut',
+            'group_3.BNshortcut',
+        }
+    elif model_name == 'ResNet18':
+        pass
+        
     consumed = set()
     for name, p in model.named_parameters():
         for target in targets:
@@ -308,7 +319,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                 if params.reinit_bn_stats:
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
                 if params.partial_reinit:
-                    partial_reinit(pretrained_model)
+                    partial_reinit(pretrained_model, params.model)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
                 # TODO [Add] Lottery ticket
@@ -434,9 +445,9 @@ if __name__=='__main__':
     if params.train_aug:
         checkpoint_dir += '_aug'
     if params.track_bn:
-        params.checkpoint_dir += '_track'
+        checkpoint_dir += '_track'
     if params.reinit_bn_stats:
-        params.checkpoint_dir += '_Restats'
+        checkpoint_dir += '_Restats'
     if not params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
 

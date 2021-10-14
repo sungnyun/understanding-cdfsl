@@ -85,12 +85,12 @@ if __name__=='__main__':
 #             params.num_classes = 1000
         else:
             raise ValueError('Unknown dataset')
-
+            
         if params.method == 'baseline' or params.method == 'baseline_body':
             model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
         elif params.method == 'baseline++':
             model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
-    
+            
     elif params.method in ['maml', 'boil', 'protonet']:
         n_query = max(1, int(16* params.test_n_way/params.train_n_way)) #if test_n_way is smaller than train_n_way, reduce n_query to keep batch size small
         train_few_shot_params = dict(n_way = params.train_n_way, n_support = params.n_shot) 
