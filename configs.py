@@ -1,8 +1,9 @@
 save_dir                    = './logs'
 
 miniImageNet_path           	= '/data/cdfsl/miniImagenet'
-#miniImageNet_test_path          = '/data/cdfsl/miniImagenet_test_student'  # for startup
 miniImageNet_test_path          = '/data/cdfsl/miniImagenet_test'
+tieredImageNet_path           	= '/data/cdfsl/tieredImagenet/train'
+tieredImageNet_test_path        = '/data/cdfsl/tieredImagenet/test'
 DTD_path 						= '/ssd/dtd/images/'
 
 ISIC_path = "/data/cdfsl/ISIC"

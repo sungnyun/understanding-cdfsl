@@ -22,11 +22,15 @@ def parse_args(script):
         parser.add_argument('--save_freq'   , default=50, type=int, help='Save frequency')
         parser.add_argument('--start_epoch' , default=0, type=int,help ='Starting epoch')
         parser.add_argument('--stop_epoch'  , default=400, type=int, help ='Stopping epoch') # for meta-learning methods, each epoch contains 100 episodes
+        
+        # For pre-trained model (related to BN)
+        parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats') 
+        parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
 
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
-
-        parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
+        # parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
+        parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
         parser.add_argument('--partial_reinit', action='store_true', help ='Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block')
 
@@ -47,6 +51,10 @@ def parse_args(script):
         
     return parser.parse_args()
 
+def get_init_file(checkpoint_dir):
+    init_file = os.path.join(checkpoint_dir, 'initial.tar')
+    return init_file
+
 def get_assigned_file(checkpoint_dir,num):
     assign_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(num))
     return assign_file
@@ -57,7 +65,7 @@ def get_resume_file(checkpoint_dir):
         print('Warning: unable to locate *.tar checkpoint file in {}'.format(checkpoint_dir))
         return None
 
-    filelist =  [ x  for x in filelist if os.path.basename(x) != 'best_model.tar' ]
+    filelist =  [ x  for x in filelist if os.path.basename(x) != 'best_model.tar' and os.path.basename(x) != 'initial.tar']
     epochs = np.array([int(os.path.splitext(os.path.basename(x))[0]) for x in filelist])
     max_epoch = np.max(epochs)
     resume_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(max_epoch))

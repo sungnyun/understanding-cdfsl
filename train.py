@@ -17,7 +17,7 @@ from methods.boil import BOIL
 from methods.protonet import ProtoNet
 
 from io_utils import parse_args, get_resume_file  
-from datasets import miniImageNet_few_shot, DTD_few_shot
+from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, DTD_few_shot
 
 
 def train(base_loader, model, optimization, start_epoch, stop_epoch, params):    
@@ -35,11 +35,15 @@ def train(base_loader, model, optimization, start_epoch, stop_epoch, params):
         raise ValueError('Unknown optimization, please define by yourself')
 
     for epoch in range(start_epoch, stop_epoch):
-        model.train()
-        model.train_loop(epoch, base_loader, optimizer, scheduler) 
-
         if not os.path.isdir(params.checkpoint_dir):
             os.makedirs(params.checkpoint_dir)
+            
+        if epoch == 0:
+            outfile = os.path.join(params.checkpoint_dir, 'initial.tar'.format(epoch))
+            torch.save({'epoch':epoch, 'state':model.state_dict()}, outfile)
+            
+        model.train()
+        model.train_loop(epoch, base_loader, optimizer, scheduler)
 
         if (epoch % params.save_freq==0) or (epoch==stop_epoch-1):
             outfile = os.path.join(params.checkpoint_dir, '{:d}.tar'.format(epoch))
@@ -52,19 +56,33 @@ if __name__=='__main__':
     params = parse_args('train')
 
     if params.model == 'ResNet10':
-        model_dict = {params.model: backbone.ResNet10(method=params.method)}
+        model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.model == 'ResNet12':
+        model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
     else:
         raise ValueError('Unknown extractor')
 
-    image_size = 224
     optimization = 'Adam'
 
-    pre_bs = 256
     if params.method in ['baseline', 'baseline++', 'baseline_body'] :
         if params.dataset == "miniImageNet":
-            datamgr = miniImageNet_few_shot.SimpleDataManager(image_size, batch_size = pre_bs)
-            base_loader = datamgr.get_data_loader(aug = params.train_aug)
-            # params.num_classes = 64
+            image_size = 224
+            bsize = 16 # Original
+            datamgr = miniImageNet_few_shot.SimpleDataManager(image_size, batch_size=bsize)
+            base_loader = datamgr.get_data_loader(aug=params.train_aug)
+            params.num_classes = 64
+        elif params.dataset == 'tieredImageNet':
+            image_size = 84
+            bsize = 256
+            datamgr = tieredImageNet_few_shot.SimpleDataManager(image_size, batch_size=bsize)
+            base_loader = datamgr.get_data_loader(aug=False) # Do no augmentation for tiered imagenet to be consisitent with the literature
+            params.num_classes = 351
+#         elif params.dataset == 'ImageNet':
+#             image_size = 224
+#             bsize = 256
+#             datamgr = ImageNet_few_shot.SimpleDataManager(image_size, batch_size=bsize)
+#             base_loader = datamgr.get_data_loader(aug=params.train_aug, num_workers=8)
+#             params.num_classes = 1000
         else:
             raise ValueError('Unknown dataset')
 
@@ -72,7 +90,7 @@ if __name__=='__main__':
             model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
         elif params.method == 'baseline++':
             model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
-
+    
     elif params.method in ['maml', 'boil', 'protonet']:
         n_query = max(1, int(16* params.test_n_way/params.train_n_way)) #if test_n_way is smaller than train_n_way, reduce n_query to keep batch size small
         train_few_shot_params = dict(n_way = params.train_n_way, n_support = params.n_shot) 
@@ -81,7 +99,7 @@ if __name__=='__main__':
         if params.dataset == "miniImageNet":
             datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_query = n_query, **train_few_shot_params)
             base_loader = datamgr.get_data_loader(aug = params.train_aug)
-            # params.num_classes = 64
+            params.num_classes = 64
         else:
             raise ValueError('Unknown dataset')
 
@@ -98,11 +116,14 @@ if __name__=='__main__':
     model = model.cuda()
     save_dir = configs.save_dir
 
-    params.checkpoint_dir = '%s/checkpoints/%s/%s_%s_prebs{}' %(save_dir, params.dataset, params.model, params.method, pre_bs)
+    params.checkpoint_dir = '%s/checkpoints/%s/%s_%s' %(save_dir, params.dataset, params.model, params.method)
     if params.train_aug:
         params.checkpoint_dir += '_aug'
-
-    if not params.method in ['baseline', 'baseline++', 'baseline_body']: 
+    if params.track_bn:
+        params.checkpoint_dir += '_track'
+    if params.reinit_bn_stats:
+        params.checkpoint_dir += '_Restats'
+    if not params.method in ['baseline', 'baseline++', 'baseline_body']:
         params.checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
 
     if not os.path.isdir(params.checkpoint_dir):

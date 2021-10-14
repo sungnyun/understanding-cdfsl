@@ -1,5 +1,6 @@
 from typing import List
 
+import copy
 import numpy as np
 import pandas as pd
 import torch
@@ -23,17 +24,15 @@ from methods.maml import MAML
 from methods.boil import BOIL
 from methods.protonet import ProtoNet
 
-from io_utils import parse_args, get_resume_file, get_best_file, get_assigned_file
+from io_utils import parse_args, get_init_file, get_resume_file, get_best_file, get_assigned_file
 
 from utils import *
 
-from datasets import miniImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
+from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
 # [CVPR2022] Re-initialization (hard-coded arguments, overrides CLI arguments)
 MANUAL_REINIT = False
 MANUAL_REINIT_BLOCKS = [1]
-MANUAL_REINIT_BN_STATS = False
-
 
 STARTUP_METHODS = [
     'startup',
@@ -55,7 +54,6 @@ class Classifier(nn.Module):
         x = self.fc(x)
         return x
 
-
 def reinit_blocks(model, block_indices: List[int]):
     """
     block_indices should be subset of { 1, 2, 3, 4 }
@@ -75,12 +73,9 @@ def reinit_blocks(model, block_indices: List[int]):
                     else:
                         p.data.fill_(0.)
                 else:
-                    # p.data[48:,:,:,:].fill_(0.)
-                    # half = p.data.shape[0] // 2
-                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5)) # p.data[half:,:,:,:]
+                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
 
     return model
-
 
 def partial_reinit(model):
     """
@@ -105,9 +100,7 @@ def partial_reinit(model):
                     else:
                         p.data.fill_(0.)
                 else:
-                    # p.data[48:,:,:,:].fill_(0.)
-                    # half = p.data.shape[0] // 2
-                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5)) # p.data[half:,:,:,:]
+                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
                 consumed.add(target)
 
     remaining = targets - consumed
@@ -116,6 +109,41 @@ def partial_reinit(model):
 
     return model
 
+def lottery_reinit(model, checkpoint_dir):
+    """
+    Re-initialize (Lottery ticket) {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
+
+    :param model:
+    :return:
+    """
+    targets = {  # ResNet10 - block 4
+        'trunk.7.C2',
+        'trunk.7.BN2',
+        'trunk.7.shortcut',
+        'trunk.7.BNshortcut',
+    }
+    consumed = set()
+    
+    init_model = copy.deepcopy(model)
+    modelfile = get_init_file(checkpoint_dir)
+    if not modelfile or not os.path.exists(modelfile):
+        raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
+    tmp = torch.load(modelfile)
+    state = tmp['state']
+    init_model.load_state_dict(state, strict=True)
+    
+    for (name, p1), (name, p2) in list(zip(model.named_parameters(), init_model.named_parameters())):
+        for target in targets:
+            if target in name:
+                with torch.no_grad():
+                    p1.data = p2.data
+                consumed.add(target)
+
+    remaining = targets - consumed
+    if remaining:
+        raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
+
+    return model
 
 def mv_init(model):
     # print('Mean-var init')
@@ -129,36 +157,22 @@ def mv_init(model):
 
     return model
 
-
-def reinit_running_batch_statistics(model, var_init=0.1):
-    model.feature.trunk[1].running_mean.data.fill_(0.)
-    model.feature.trunk[1].running_var.data.fill_(var_init)
-
-    model.feature.trunk[4].BN1.running_mean.data.fill_(0.)
-    model.feature.trunk[4].BN1.running_var.data.fill_(var_init)
-    model.feature.trunk[4].BN2.running_mean.data.fill_(0.)
-    model.feature.trunk[4].BN2.running_var.data.fill_(var_init)
-
-    model.feature.trunk[5].BN1.running_mean.data.fill_(0.)
-    model.feature.trunk[5].BN1.running_var.data.fill_(var_init)
-    model.feature.trunk[5].BN2.running_mean.data.fill_(0.)
-    model.feature.trunk[5].BN2.running_var.data.fill_(var_init)
-    model.feature.trunk[5].BNshortcut.running_mean.data.fill_(0.)
-    model.feature.trunk[5].BNshortcut.running_var.data.fill_(var_init)
-
-    model.feature.trunk[6].BN1.running_mean.data.fill_(0.)
-    model.feature.trunk[6].BN1.running_var.data.fill_(var_init)
-    model.feature.trunk[6].BN2.running_mean.data.fill_(0.)
-    model.feature.trunk[6].BN2.running_var.data.fill_(var_init)
-    model.feature.trunk[6].BNshortcut.running_mean.data.fill_(0.)
-    model.feature.trunk[6].BNshortcut.running_var.data.fill_(var_init)
-
-    model.feature.trunk[7].BN1.running_mean.data.fill_(0.)
-    model.feature.trunk[7].BN1.running_var.data.fill_(var_init)
-    model.feature.trunk[7].BN2.running_mean.data.fill_(0.)
-    model.feature.trunk[7].BN2.running_var.data.fill_(var_init)
-    model.feature.trunk[7].BNshortcut.running_mean.data.fill_(0.)
-    model.feature.trunk[7].BNshortcut.running_var.data.fill_(var_init)
+def reinit_stem(model):
+    """
+    :param model:
+    :return:
+    """
+    
+    for name, p in model.named_parameters():
+        if 'trunk.0' in name:
+            nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
+        elif 'trunk.1' in name:
+            if 'weight' in name:
+                p.data.fill_(1.)
+            else:
+                p.data.fill_(0.)
+        else:
+            pass
 
     return model
 
@@ -178,8 +192,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
     if MANUAL_REINIT:
         print('Using manual hard-coded re-init arguments')
         params.reinit_blocks = MANUAL_REINIT_BLOCKS
-        params.reinit_bn_stats = MANUAL_REINIT_BN_STATS
-
+        
     reinit_arguments = [
         bool(params.reinit_blocks), bool(params.partial_reinit),
     ]
@@ -188,12 +201,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
     if params.mv_init:
         print('Mean-var re-init (full network)')
+    if params.reinit_stem:
+        print('Re-initializing stem')
     if params.reinit_blocks:
         print('Re-initializing blocks {} (one-index)'.format(params.reinit_blocks))
     if params.partial_reinit:
         print('Re-initializing specific layers from last block (partial reinit)')
-    if params.reinit_bn_stats:
-        print('Re-initializing all running batch statistics')
 
     # [CVPR2022] Build result_path
     suffixes = ['']
@@ -201,17 +214,23 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         suffixes.append('freeze')
     if params.mv_init:
         suffixes.append('mvinit')
+    if params.reinit_stem:
+        suffixes.append('reinitstem')
     if params.reinit_blocks:
         blocks_string = ''.join([str(i) for i in params.reinit_blocks])
         suffixes.append('reinitblock{}'.format(blocks_string))  # changed from LBreinit
     if params.partial_reinit:
         suffixes.append('pr')
-    if params.reinit_bn_stats:
-        suffixes.append('reinitbn'.format(params.reinit_bn_stats))
-    # suffixes.append('nil'.format(params.reinit_bn_stats))
+        
     suffix = '_'.join(suffixes)
+    
     basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
         dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
+    
+    custom_name = ''
+    if custom_name != '':
+        basename = basename + '_' + custom_name
+    
     result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
 
@@ -241,7 +260,14 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             task_all = []
             task_all_nil = []
 
-        # load pretrained model on miniImageNet
+        # load pretrained model on miniImageNet or tieredImageNet
+        params.save_iter = -1
+        if params.save_iter != -1:
+            modelfile   = get_assigned_file(checkpoint_dir, params.save_iter)
+        elif params.method in ['baseline', 'baseline++', 'baseline_body'] :
+            modelfile   = get_resume_file(checkpoint_dir)
+        else:
+            modelfile   = get_best_file(checkpoint_dir)
 
         if params.method in STARTUP_METHODS:
             tmp = torch.load(modelfile)  # note, tmp is only used to load the model weights
@@ -273,19 +299,19 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             classifier.cuda()
             classifier.train()
             
-            # with torch.no_grad():
-            #     classifier.fc.weight.data = torch.stack([torch.mean(pretrained_model.classifier.weight.data[:64], dim=0)]*n_way)
-
             if freeze_backbone is False:
                 # [CVPR2022] Re-initialization
                 if params.mv_init:
                     mv_init(pretrained_model)
+                if params.reinit_stem:
+                    reinit_stem(pretrained_model)
                 if params.reinit_bn_stats:
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
                 if params.partial_reinit:
                     partial_reinit(pretrained_model)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
+                # TODO [Add] Lottery ticket
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
         loss_fn = nn.CrossEntropyLoss().cuda()
@@ -304,11 +330,11 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             support_size = n_way * n_support
-            
+                            
             for epoch in range(finetune_epoch):
                 pretrained_model.train()
                 classifier.train()
-
+                
                 if freeze_backbone:
                     pretrained_model.eval()
 
@@ -323,6 +349,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                     y_batch = y_a_i[selected_id]
                     #####################################
                     output = pretrained_model.feature(z_batch)
+                    # output = pretrained_model.feature.forward_bodyfreeze(z_batch)
                     scores = classifier(output)
                     loss = loss_fn(scores, y_batch)
                     #####################################
@@ -343,28 +370,13 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
                         top1_correct = np.sum(topk_ind[:,0] == y_query)
                         correct_this, count_this = float(top1_correct), len(y_query)
-                        # print (correct_this/ count_this *100)
                         task_all.append((correct_this/count_this*100))
 
-#                     nil_cls = torch.zeros([5, 512])
-#                     for i in range(5):
-#                         cls_idx = y_a_i==i
-#                         nil_cls[i] = torch.mean(pretrained_model.feature(x_a_i)[cls_idx].cpu(), dim=0)
-#                     scores = torch.mm(pretrained_model.feature(x_b_i).cpu(), nil_cls.T)
-#                     topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
-#                     topk_ind = topk_labels.cpu().numpy()
-
-#                     top1_correct = np.sum(topk_ind[:,0] == y_query)
-#                     correct_this, count_this = float(top1_correct), len(y_query)
-#                     # print (correct_this/ count_this *100)
-#                     task_all_nil.append((correct_this/count_this*100))
                 else:
                     task_all.append(0.0)
 
             df.loc[task_num+1] = task_all
             df.to_csv(result_path)
-            # df_nil.loc[task_num+1] = task_all_nil
-            # df_nil.to_csv(result_nil_path)
 
         elif params.method in ['maml', 'boil']:                
             scores = pretrained_model.set_forward(x)
@@ -375,42 +387,36 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
             top1_correct = np.sum(topk_ind[:,0] == y_query)
             correct_this, count_this = float(top1_correct), len(y_query)
-            # print (correct_this/ count_this *100)
             acc_all.append((correct_this/ count_this *100))
 
         ###############################################################################################
-
-#     acc_all  = np.asarray(acc_all)
-#     acc_mean = np.mean(acc_all)
-#     acc_std  = np.std(acc_all)
-
-#     if freeze_backbone:
-#         result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}_freeze.csv'.format(n_way, n_support, finetune_epoch, batch_size))
-#     else:
-#         result_path = os.path.join(checkpoint_dir, dataset_name + '_{}way{}shot_ft{}_bs{}.csv'.format(n_way, n_support, finetune_epoch, batch_size))
-#     df['Accuracy'] = list(acc_all)
-#     df.to_csv(result_path)
-#     print('%d Test Acc = %4.2f%% +- %4.2f%%' %(iter_num,  acc_mean, 1.96* acc_std/np.sqrt(iter_num)))
-
 
 if __name__=='__main__':
     np.random.seed(10)
     params = parse_args('train')
 
     if params.model == 'ResNet10':
-        model_dict = {params.model: backbone.ResNet10(method=params.method)}
+        model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.model == 'ResNet12':
+        model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
     else:
         raise ValueError('Unknown extractor')
 
     ##################################################################
-    image_size = 224
+    if params.dataset == 'miniImageNet':
+        image_size = 224
+    elif params.dataset == 'tieredImageNet':
+        image_size = 84
     iter_num = 600
 
     # params.n_shot = 5
     few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
 
     if params.method in ['baseline', 'baseline_body'] + STARTUP_METHODS:
-        # params.num_classes = 64
+        if params.dataset == 'miniImageNet':
+            params.num_classes = 64
+        elif params.dataset == 'tieredImageNet':
+            params.num_classes = 351
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     elif params.method == 'baseline++':
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
@@ -427,18 +433,26 @@ if __name__=='__main__':
     checkpoint_dir = '%s/checkpoints/%s/%s_%s' %(configs.save_dir, pretrained_dataset, params.model, params.method)
     if params.train_aug:
         checkpoint_dir += '_aug'
-    if not params.method  in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
+    if params.track_bn:
+        params.checkpoint_dir += '_track'
+    if params.reinit_bn_stats:
+        params.checkpoint_dir += '_Restats'
+    if not params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
 
     freeze_backbone = params.freeze_backbone
     #########################################################################
+    
     dataset_names = params.dataset_names
     split = params.startup_split
+    
     for dataset_name in dataset_names:
         print (dataset_name)
         print('Initializing data loader...')
         if dataset_name == "miniImageNet":
             datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
+        if dataset_name == "tieredImageNet":
+            datamgr = tieredImageNet_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "CropDisease":
             datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "EuroSAT":
@@ -448,7 +462,7 @@ if __name__=='__main__':
         elif dataset_name == "ChestX":
             datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         
-        if dataset_name == "miniImageNet":
+        if dataset_name == "miniImageNet" or dataset_name == "tieredImageNet":
             novel_loader = datamgr.get_data_loader(aug=False, train=False)
         else:
             novel_loader = datamgr.get_data_loader(aug=False)

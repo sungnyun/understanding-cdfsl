@@ -6,7 +6,6 @@
 # --method startup_student_body
 # --dataset_names miniImageNet CropDisease EuroSAT ISIC ChestX
 
-
 # python ./finetune.py --dataset miniImageNet --model ResNet10 --startup_split \
 #  --method baseline_body --train_aug --reinit_blocks 1 2 3 4
 # python ./finetune.py --dataset miniImageNet --model ResNet10 --startup_split \

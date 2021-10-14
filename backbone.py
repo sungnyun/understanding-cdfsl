@@ -99,20 +99,16 @@ class BatchNorm2d_fw(nn.BatchNorm2d): #used in MAML to forward input with fast w
 
 # Simple ResNet Block
 class SimpleBlock(nn.Module):
-    def __init__(self, method, indim, outdim, half_res):
+    def __init__(self, method, indim, outdim, half_res, track_bn):
         super(SimpleBlock, self).__init__()
         self.indim = indim
         self.outdim = outdim
-        if method == 'baseline':
-            self.C1 = nn.Conv2d(indim, outdim, kernel_size=3, stride=2 if half_res else 1, padding=1, bias=False)
-            self.BN1 = nn.BatchNorm2d(outdim, track_running_stats=True)
-            self.C2 = nn.Conv2d(outdim, outdim,kernel_size=3, padding=1, bias=False)
-            self.BN2 = nn.BatchNorm2d(outdim, track_running_stats=True)
-        else:
-            self.C1 = Conv2d_fw(indim, outdim, kernel_size=3, stride=2 if half_res else 1, padding=1, bias=False)
-            self.BN1 = BatchNorm2d_fw(outdim)
-            self.C2 = Conv2d_fw(outdim, outdim,kernel_size=3, padding=1, bias=False)
-            self.BN2 = BatchNorm2d_fw(outdim)
+        
+        self.C1 = nn.Conv2d(indim, outdim, kernel_size=3, stride=2 if half_res else 1, padding=1, bias=False)
+        self.BN1 = nn.BatchNorm2d(outdim, track_running_stats=track_bn)
+        self.C2 = nn.Conv2d(outdim, outdim,kernel_size=3, padding=1, bias=False)
+        self.BN2 = nn.BatchNorm2d(outdim, track_running_stats=track_bn)
+            
         self.relu1 = nn.ReLU(inplace=True)
         self.relu2 = nn.ReLU(inplace=True)
 
@@ -122,12 +118,8 @@ class SimpleBlock(nn.Module):
 
         # if the input number of channels is not equal to the output, then need a 1x1 convolution
         if indim!=outdim:
-            if method == 'baseline':
-                self.shortcut = nn.Conv2d(indim, outdim, 1, 2 if half_res else 1, bias=False)
-                self.BNshortcut = nn.BatchNorm2d(outdim, track_running_stats=True)
-            else:
-                self.shortcut = Conv2d_fw(indim, outdim, 1, 2 if half_res else 1, bias=False)
-                self.BNshortcut = BatchNorm2d_fw(outdim)
+            self.shortcut = nn.Conv2d(indim, outdim, 1, 2 if half_res else 1, bias=False)
+            self.BNshortcut = nn.BatchNorm2d(outdim, track_running_stats=track_bn)
 
             self.parametrized_layers.append(self.shortcut)
             self.parametrized_layers.append(self.BNshortcut)
@@ -150,78 +142,17 @@ class SimpleBlock(nn.Module):
         
         return out
 
-# Bottleneck block
-class BottleneckBlock(nn.Module):
-    def __init__(self, method, indim, outdim, half_res):
-        super(BottleneckBlock, self).__init__()
-        bottleneckdim = int(outdim/4)
-        self.indim = indim
-        self.outdim = outdim
-        if method == 'baseline':
-            self.C1 = nn.Conv2d(indim, bottleneckdim, kernel_size=1,  bias=False)
-            self.BN1 = nn.BatchNorm2d(bottleneckdim, track_running_stats=True)
-            self.C2 = nn.Conv2d(bottleneckdim, bottleneckdim, kernel_size=3, stride=2 if half_res else 1,padding=1)
-            self.BN2 = nn.BatchNorm2d(bottleneckdim, track_running_stats=True)
-            self.C3 = nn.Conv2d(bottleneckdim, outdim, kernel_size=1, bias=False)
-            self.BN3 = nn.BatchNorm2d(outdim, track_running_stats=True)
-        else:
-            self.C1 = Conv2d_fw(indim, bottleneckdim, kernel_size=1,  bias=False)
-            self.BN1 = BatchNorm2d_fw(bottleneckdim)
-            self.C2 = Conv2d_fw(bottleneckdim, bottleneckdim, kernel_size=3, stride=2 if half_res else 1,padding=1)
-            self.BN2 = BatchNorm2d_fw(bottleneckdim)
-            self.C3 = Conv2d_fw(bottleneckdim, outdim, kernel_size=1, bias=False)
-            self.BN3 = BatchNorm2d_fw(outdim)
-
-        self.relu = nn.ReLU()
-        self.parametrized_layers = [self.C1, self.BN1, self.C2, self.BN2, self.C3, self.BN3]
-        self.half_res = half_res
-
-
-        # if the input number of channels is not equal to the output, then need a 1x1 convolution
-        if indim!=outdim:
-            if method == 'baseline':
-                self.shortcut = nn.Conv2d(indim, outdim, 1, stride=2 if half_res else 1, bias=False)
-            else:
-                self.shortcut = Conv2d_fw(indim, outdim, 1, stride=2 if half_res else 1, bias=False)
-
-            self.parametrized_layers.append(self.shortcut)
-            self.shortcut_type = '1x1'
-        else:
-            self.shortcut_type = 'identity'
-
-        for layer in self.parametrized_layers:
-            init_layer(layer)
-
-
-    def forward(self, x):
-
-        short_out = x if self.shortcut_type == 'identity' else self.shortcut(x)
-        out = self.C1(x)
-        out = self.BN1(out)
-        out = self.relu(out)
-        out = self.C2(out)
-        out = self.BN2(out)
-        out = self.relu(out)
-        out = self.C3(out)
-        out = self.BN3(out)
-        out = out + short_out
-
-        out = self.relu(out)
-        return out
-
 class ResNet(nn.Module):
-    def __init__(self, method, block, list_of_num_layers, list_of_out_dims, flatten):
+    def __init__(self, method, block, list_of_num_layers, list_of_out_dims, flatten, track_bn, reinit_bn_stats):
         # list_of_num_layers specifies number of layers in each stage
         # list_of_out_dims specifies number of output channel for each stage
         super(ResNet,self).__init__()
         assert len(list_of_num_layers)==4, 'Can have only four stages'
 
-        if method == 'baseline':
-            conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-            bn1 = nn.BatchNorm2d(64, track_running_stats=True)
-        else:
-            conv1 = Conv2d_fw(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
-            bn1 = BatchNorm2d_fw(64)
+        self.reinit_bn_stats = reinit_bn_stats
+        
+        conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        bn1 = nn.BatchNorm2d(64, track_running_stats=track_bn)
 
         relu = nn.ReLU()
         pool1 = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
@@ -235,7 +166,7 @@ class ResNet(nn.Module):
         for i in range(4):
             for j in range(list_of_num_layers[i]):
                 half_res = (i>=1) and (j==0)
-                B = block(method, indim, list_of_out_dims[i], half_res)
+                B = block(method, indim, list_of_out_dims[i], half_res, track_bn)
                 trunk.append(B)
                 indim = list_of_out_dims[i]
 
@@ -250,8 +181,41 @@ class ResNet(nn.Module):
         self.trunk = nn.Sequential(*trunk)
 
     def forward(self,x):
+        if self.reinit_bn_stats:
+            self._reinit_running_batch_statistics()
         out = self.trunk(x)
         return out
+        
+    def _reinit_running_batch_statistics(self):
+        with torch.no_grad():
+            self.trunk[1].running_mean.data.fill_(0.)
+            self.trunk[1].running_var.data.fill_(1.)
+
+            self.trunk[4].BN1.running_mean.data.fill_(0.)
+            self.trunk[4].BN1.running_var.data.fill_(1.)
+            self.trunk[4].BN2.running_mean.data.fill_(0.)
+            self.trunk[4].BN2.running_var.data.fill_(1.)
+
+            self.trunk[5].BN1.running_mean.data.fill_(0.)
+            self.trunk[5].BN1.running_var.data.fill_(1.)
+            self.trunk[5].BN2.running_mean.data.fill_(0.)
+            self.trunk[5].BN2.running_var.data.fill_(1.)
+            self.trunk[5].BNshortcut.running_mean.data.fill_(0.)
+            self.trunk[5].BNshortcut.running_var.data.fill_(1.)
+
+            self.trunk[6].BN1.running_mean.data.fill_(0.)
+            self.trunk[6].BN1.running_var.data.fill_(1.)
+            self.trunk[6].BN2.running_mean.data.fill_(0.)
+            self.trunk[6].BN2.running_var.data.fill_(1.)
+            self.trunk[6].BNshortcut.running_mean.data.fill_(0.)
+            self.trunk[6].BNshortcut.running_var.data.fill_(1.)
+
+            self.trunk[7].BN1.running_mean.data.fill_(0.)
+            self.trunk[7].BN1.running_var.data.fill_(1.)
+            self.trunk[7].BN2.running_mean.data.fill_(0.)
+            self.trunk[7].BN2.running_var.data.fill_(1.)
+            self.trunk[7].BNshortcut.running_mean.data.fill_(0.)
+            self.trunk[7].BNshortcut.running_var.data.fill_(1.)
     
     def return_features(self,x):
         flat = Flatten()
@@ -262,7 +226,121 @@ class ResNet(nn.Module):
             block2_out = self.trunk[5](block1_out)
             block3_out = self.trunk[6](block2_out)
             block4_out = self.trunk[7](block3_out)
-        return flat(block1_out), flat(block2_out), flat(block3_out), flat(block4_out), flat(m(block4_out))
+        return flat(m(block1_out)), flat(m(block2_out)), flat(m(block3_out)), flat(m(block4_out))
+    
+    def forward_bodyfreeze(self,x):
+        flat = Flatten()
+        m = nn.AdaptiveAvgPool2d((1,1))
 
-def ResNet10(method):
-    return ResNet(method, block=SimpleBlock, list_of_num_layers=[1,1,1,1], list_of_out_dims=[64,128,256,512], flatten=True)
+        with torch.no_grad():
+            block1_out = self.trunk[4](self.trunk[3](self.trunk[2](self.trunk[1](self.trunk[0](x)))))
+            block2_out = self.trunk[5](block1_out)
+            block3_out = self.trunk[6](block2_out)
+            
+            out = self.trunk[7].C1(block3_out)
+            out = self.trunk[7].BN1(out)
+            out = self.trunk[7].relu1(out)
+        
+        out = self.trunk[7].C2(out)
+        out = self.trunk[7].BN2(out)
+        short_out = self.trunk[7].BNshortcut(self.trunk[7].shortcut(block3_out))
+        out = out + short_out
+        out = self.trunk[7].relu2(out)
+        
+        return flat(m(out))
+
+def ResNet10(method, track_bn, reinit_bn_stats):
+    return ResNet(method, block=SimpleBlock, list_of_num_layers=[1,1,1,1], list_of_out_dims=[64,128,256,512], flatten=True, track_bn=track_bn, reinit_bn_stats=reinit_bn_stats)
+
+# -*- coding: utf-8 -*-
+# https://github.com/ElementAI/embedding-propagation/blob/master/src/models/backbones/resnet12.py
+
+class Block(torch.nn.Module):
+    def __init__(self, ni, no, stride, dropout, track_bn, reinit_bn_stats):
+        super().__init__()
+        self.reinit_bn_stats = reinit_bn_stats
+        
+        self.dropout = nn.Dropout2d(dropout) if dropout > 0 else lambda x: x
+        self.C0 = nn.Conv2d(ni, no, 3, stride, padding=1, bias=False)
+        self.BN0 = nn.BatchNorm2d(no, track_running_stats=track_bn)
+        self.C1 = nn.Conv2d(no, no, 3, 1, padding=1, bias=False)
+        self.BN1 = nn.BatchNorm2d(no, track_running_stats=track_bn)
+        self.C2 = nn.Conv2d(no, no, 3, 1, padding=1, bias=False)
+        self.BN2 = nn.BatchNorm2d(no, track_running_stats=track_bn)
+        if stride == 2 or ni != no:
+            self.shortcut = nn.Conv2d(ni, no, 1, stride=1, padding=0)
+            self.BNshortcut = nn.BatchNorm2d(no, track_running_stats=track_bn)
+
+    def get_parameters(self):
+        return self.parameters()
+
+    def forward(self, x):
+        if self.reinit_bn_stats:
+            self._reinit_running_batch_statistics()
+        
+        out = self.C0(x)
+        out = self.BN0(out)
+        out = F.relu(out)
+        out = self.dropout(out)
+        out = self.C1(out)
+        out = self.BN1(out)
+        out = F.relu(out)
+        out = self.dropout(out)
+        out = self.C2(out)
+        out = self.BN2(out)
+        out += self.BNshortcut(self.shortcut(x))
+        out = self.relu(out)
+        
+        return out
+    
+    def _reinit_running_batch_statistics(self):
+        with torch.no_grad():
+            self.BN0.running_mean.data.fill_(0.)
+            self.BN0.running_var.data.fill_(1.)
+            self.BN1.running_mean.data.fill_(0.)
+            self.BN1.running_var.data.fill_(1.)
+            self.BN2.running_mean.data.fill_(0.)
+            self.BN2.running_var.data.fill_(1.)
+            self.BNshortcut.running_mean.data.fill_(0.)
+            self.BNshortcut.running_var.data.fill_(1.)
+
+class ResNet12(torch.nn.Module):
+    def __init__(self, track_bn, reinit_bn_stats, width=1, dropout=0):
+        super().__init__()
+        self.final_feat_dim = 512
+        assert(width == 1) # Comment for different variants of this model
+        self.widths = [x * int(width) for x in [64, 128, 256]]
+        self.widths.append(self.final_feat_dim * width)
+        # self.bn_out = nn.BatchNorm1d(self.final_feat_dim)
+
+        start_width = 3
+        for i in range(len(self.widths)):
+            setattr(self, "group_%d" %i, Block(start_width, self.widths[i], 1, dropout, track_bn, reinit_bn_stats))
+            start_width = self.widths[i]
+
+    def add_classifier(self, nclasses, name="classifier", modalities=None):
+        setattr(self, name, torch.nn.Linear(self.final_feat_dim, nclasses))
+
+    def up_to_embedding(self, x):
+        """ Applies the four residual groups
+        Args:
+            x: input images
+            n: number of few-shot classes
+            k: number of images per few-shot class
+        """
+        for i in range(len(self.widths)):
+            x = getattr(self, "group_%d" % i)(x)
+            x = F.max_pool2d(x, 3, 2, 1)
+        return x
+
+    def forward(self, x):
+        """Main Pytorch forward function
+        Returns: class logits
+        Args:
+            x: input mages
+        """
+        *args, c, h, w = x.size()
+        x = x.view(-1, c, h, w)
+        x = self.up_to_embedding(x)
+        # return F.relu(self.bn_out(x.mean(3).mean(2)), True)
+        return F.relu(x.mean(3).mean(2), True)
