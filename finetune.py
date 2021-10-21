@@ -48,7 +48,6 @@ def print_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
         print (m.momentum)
 
-
 def print_BNstats(m):
     if isinstance(m, nn.BatchNorm2d):
         print (m.running_mean, m.running_var)
@@ -139,7 +138,7 @@ def partial_reinit(model, model_name):
     return model
 
 
-def lottery_reinit(model, model_name, checkpoint_dir):
+def lottery_reinit(model, model_name, checkpoint_dir, dataset_name):
     """
     Re-initialize (Lottery ticket) {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
 
@@ -166,7 +165,10 @@ def lottery_reinit(model, model_name, checkpoint_dir):
     consumed = set()
     
     init_model = copy.deepcopy(model)
-    modelfile = get_init_file(checkpoint_dir)
+    if params.simclr_finetune:
+        modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
+    else:
+        modelfile = get_init_file(checkpoint_dir)
     if not modelfile or not os.path.exists(modelfile):
         raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
     tmp = torch.load(modelfile)
@@ -221,7 +223,7 @@ def reinit_stem(model):
     return model
 
 
-def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, simclr_bn_stats=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
+def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
     finetune_epoch = 100
     batch_size = 4
@@ -269,12 +271,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     suffix = '_'.join(suffixes)
     
     if params.simclr_finetune:
-        if simclr_bn_stats:
-            basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}_sbn.csv'.format(
-                dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
-        else:
-            basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}.csv'.format(
-                dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
+        basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}.csv'.format(
+            dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
         result_path = os.path.join(checkpoint_dir, 'unlabeled', basename)
     else:
         basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
@@ -359,7 +357,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
                 if params.lottery_reinit:
-                    lottery_reinit(pretrained_model, params.model, checkpoint_dir)
+                    lottery_reinit(pretrained_model, params.model, checkpoint_dir, dataset_name)
                 # TODO [Add] Lottery ticket
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
@@ -379,8 +377,6 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             support_size = n_way * n_support
-            if simclr_bn_stats:
-                pretrained_model.apply(tracking_off)
             
             for epoch in range(finetune_epoch):
                 pretrained_model.train()
@@ -539,7 +535,6 @@ if __name__=='__main__':
 
         if params.simclr_finetune:
             for simclr_epoch in [1000, 800, 600, 400, 200, 0]:
-                for simclr_bn_stats in [True, False]:
-                    finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, simclr_bn_stats=simclr_bn_stats, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
+                finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
         else:
             finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
