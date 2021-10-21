@@ -33,8 +33,8 @@ def parse_args(script):
         # parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
         parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
-        parser.add_argument('--partial_reinit', action='store_true', help ='Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block')
-        parser.add_argument('--lottery_reinit', action='store_true', help ='Lottery Re-initialize')
+        parser.add_argument('--partial_reinit', default=None, nargs='+', type=str, help='Re-random layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
+        parser.add_argument('--lottery_reinit', default=None, nargs='+', type=str, help='Re-init layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
         parser.add_argument('--full_supp_stats', action='store_true', help ='Use statistics of full support dataset for BN running stats')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')

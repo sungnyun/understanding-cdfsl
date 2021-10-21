@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import copy
 import numpy as np
@@ -94,99 +94,90 @@ def reinit_blocks(model, block_indices: List[int]):
     return model
 
 
-def partial_reinit(model, model_name):
-    """
-    Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
+SUPPORTED_LAYERS = ['C0', 'BN0', 'C1', 'BN1', 'C2' , 'BN2', 'shortcut', 'BNshortcut']
 
+
+def convert_layer_names(model_name, layers) -> Dict:
+    """
+    Currently only supports last block
+    :param model_name:
+    :param layers:
+
+    Return example: {
+        'trunk.7.BN1': 'bn',
+        'trunk.7.C1': 'conv',
+    }
+    """
+    targets = dict()
+
+    for layer in layers:
+        if layer not in SUPPORTED_LAYERS:
+            raise ValueError('Unsupported layer name {}'.format(layer))
+
+    for layer in layers:
+        layer_type = 'bn' if 'BN' in layer else 'conv'
+        if model_name == 'ResNet10':
+            if layer in ['C0', 'BN0']:
+                raise ValueError('Unsupported layer name {} for ResNet10'.format(layer))
+            targets['trunk.7.{}'.format(layer)] = layer_type
+        elif model_name == 'ResNet12':
+            targets['group_3.{}'.format(layer)] = layer_type
+        elif model_name == 'ResNet18':
+            if layer in ['C0', 'BN0', 'shortcut', 'BNshortcut']:
+                raise ValueError('Unsupported layer name {} for ResNet10'.format(layer))
+            mapping = {
+                'C1': 'conv1',
+                'BN1': 'bn1',
+                'C2': 'conv2',
+                'BN2': 'bn2',
+            }
+            targets['layer4.1.{}'.format(mapping[layer])] = layer_type
+
+    return targets
+
+
+def partial_reinit(model, model_name, layers, lottery_checkpoint_dir=None, dataset_name=None):
+    """
+    Partially re
     :param model:
+    :param model_name:
+    :param layers:
+    :param lottery_checkpoint_dir:
     :return:
     """
-    if model_name == 'ResNet10':
-        targets = {  # ResNet10 - block 4
-            'trunk.7.C2',
-            'trunk.7.BN2',
-            'trunk.7.shortcut',
-            'trunk.7.BNshortcut',
-        }
-    elif model_name == 'ResNet12':
-        targets = {  # ResNet12 - block 4
-            'group_3.C2',
-            'group_3.BN2',
-            'group_3.shortcut',
-            'group_3.BNshortcut',
-        }
-    elif model_name == 'ResNet18':
-        pass
-        
+    lottery_state = None
+    if lottery_checkpoint_dir:
+        assert(dataset_name is not None)
+        if params.simclr_finetune:
+            lottery_model_path = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
+        else:
+            lottery_model_path = get_init_file(checkpoint_dir)
+        if not lottery_model_path or not os.path.exists(lottery_model_path):
+            raise Exception('Invalid model path: "{}" (no such file found)'.format(lottery_model_path))
+        lottery_state = torch.load(lottery_model_path)['state']  # TODO: optimize repeated loads
+
+    targets = convert_layer_names(model_name, layers) # Dict[target_name, layer_type]
+
     consumed = set()
-    for name, p in model.named_parameters():
-        for target in targets:
-            if target in name:
-                if 'BN' in name:
-                    if 'weight' in name:
-                        p.data.fill_(1.)
+    with torch.no_grad():
+        for name, p in model.named_parameters():
+            for target, layer_type in targets.items():
+                if target in name:
+                    if lottery_state:
+                        p.data = lottery_state[name]
                     else:
-                        p.data.fill_(0.)
-                else:
-                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
-                consumed.add(target)
+                        if layer_type == 'bn':
+                            if 'weight' in name:
+                                p.data.fill_(1.)
+                            else:
+                                p.data.fill_(0.)
+                        else:
+                            nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
+                    consumed.add(target)
 
-    remaining = targets - consumed
+    remaining = set(targets.keys()) - consumed
     if remaining:
         raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
-
-    return model
-
-
-def lottery_reinit(model, model_name, checkpoint_dir, dataset_name):
-    """
-    Re-initialize (Lottery ticket) {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
-
-    :param model:
-    :return:
-    """
-    if model_name == 'ResNet10':
-        targets = {  # ResNet10 - block 4
-            'trunk.7.C2',
-            'trunk.7.BN2',
-            'trunk.7.shortcut',
-            'trunk.7.BNshortcut',
-        }
-    elif model_name == 'ResNet12':
-        targets = {  # ResNet12 - block 4
-            'group_3.C2',
-            'group_3.BN2',
-            'group_3.shortcut',
-            'group_3.BNshortcut',
-        }
-    elif model_name == 'ResNet18':
-        pass
-    
-    consumed = set()
-    
-    init_model = copy.deepcopy(model)
-    if params.simclr_finetune:
-        modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
-    else:
-        modelfile = get_init_file(checkpoint_dir)
-    if not modelfile or not os.path.exists(modelfile):
-        raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
-    tmp = torch.load(modelfile)
-    state = tmp['state']
-    init_model.load_state_dict(state, strict=True)
-    
-    for (name, p1), (name, p2) in list(zip(model.named_parameters(), init_model.named_parameters())):
-        for target in targets:
-            if target in name:
-                with torch.no_grad():
-                    p1.data = p2.data
-                consumed.add(target)
-
-    remaining = targets - consumed
-    if remaining:
-        raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
-
-    return model
 
 
 def mv_init(model):
@@ -248,7 +239,9 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     if params.reinit_blocks:
         print('Re-initializing blocks {} (one-index)'.format(params.reinit_blocks))
     if params.partial_reinit:
-        print('Re-initializing specific layers from last block (partial reinit)')
+        print('Re-randomizing specific layers from last block (partial reinit)')
+    if params.lottery_reinit:
+        print('Re-initializing specific layers from last block (lottery reinit)')
 
     # [CVPR2022] Build result_path
     suffixes = ['']
@@ -304,7 +297,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             else:
                 modelfile = get_best_file(checkpoint_dir)
 
-    if not modelfile or not os.path.exists(modelfile):
+    if params.model != 'ResNet18' and not (modelfile and os.path.exists(modelfile)):
         raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
     print('Using model weights path {}'.format(modelfile))
 
@@ -314,7 +307,13 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             task_all = []
             task_all_nil = []
 
-        if params.method in STARTUP_METHODS:
+        if params.model == 'ResNet18':
+            try:
+                tmp = torch.load(modelfile)
+                state = tmp['state']  # state dict
+            except:
+                state = None
+        elif params.method in STARTUP_METHODS:
             tmp = torch.load(modelfile)  # note, tmp is only used to load the model weights
             state = tmp['model']  # state dict of *backbone* (from STARTUP student .pkl file)
         else:
@@ -357,13 +356,13 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                     reinit_stem(pretrained_model)
                 if params.reinit_bn_stats:
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
-                if params.partial_reinit:
-                    partial_reinit(pretrained_model, params.model)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
+                if params.partial_reinit:
+                    partial_reinit(pretrained_model, params.model, params.partial_reinit)
                 if params.lottery_reinit:
-                    lottery_reinit(pretrained_model, params.model, checkpoint_dir, dataset_name)
-                # TODO [Add] Lottery ticket
+                    partial_reinit(pretrained_model, params.model, params.lottery_reinit, lottery_checkpoint_dir=checkpoint_dir, dataset_name=dataset_name)
+                # TODO [Add] Lottery ticket (?)
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
         loss_fn = nn.CrossEntropyLoss().cuda()
@@ -455,6 +454,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
         ###############################################################################################
 
+
 if __name__=='__main__':
     np.random.seed(10)
     params = parse_args('train')
@@ -463,6 +463,10 @@ if __name__=='__main__':
         model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
     elif params.model == 'ResNet12':
         model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.model == 'ResNet18':
+        if params.reinit_bn_stats:
+            raise AssertionError('Not supported')
+        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
     else:
         raise ValueError('Unknown extractor')
 
