@@ -36,11 +36,13 @@ STARTUP_METHODS = [
     'startup_student_body',  # teacher full + student body
 ]
 
+def tracking_off(m):
+    if isinstance(m, nn.BatchNorm2d):
+        m.track_running_stats = False
 
 def change_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
         m.momentum = 1.0
-
 
 def print_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
@@ -219,7 +221,7 @@ def reinit_stem(model):
     return model
 
 
-def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
+def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, simclr_bn_stats=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
     finetune_epoch = 100
     batch_size = 4
@@ -266,19 +268,29 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         
     suffix = '_'.join(suffixes)
     
-    basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
-        dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
-    
     if params.simclr_finetune:
+        if simclr_bn_stats:
+            basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}_sbn.csv'.format(
+                dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
+        else:
+            basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}.csv'.format(
+                dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
         result_path = os.path.join(checkpoint_dir, 'unlabeled', basename)
     else:
+        basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
+            dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
         result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
 
     # Determine model weights path
     params.save_iter = -1
     if params.simclr_finetune:
-        modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_999.tar'.format(dataset_name.split('_')[0]))
+        if simclr_epoch == 0:
+            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
+        elif simclr_epoch == 1000:
+            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_999.tar'.format(dataset_name.split('_')[0]))
+        else:
+            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_{}.tar'.format(dataset_name.split('_')[0], simclr_epoch))
     else:
         if params.method in STARTUP_METHODS:  # startup methods apply pre-training separately to each target dataset
             if '_split' in dataset_name:  # hotfix -- startup always uses split
@@ -367,7 +379,9 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             support_size = n_way * n_support
-                            
+            if simclr_bn_stats:
+                pretrained_model.apply(tracking_off)
+            
             for epoch in range(finetune_epoch):
                 pretrained_model.train()
                 classifier.train()
@@ -523,5 +537,9 @@ if __name__=='__main__':
         
         print('Data loader initialized successfully!')
 
-        # replace finetine() with your own method
-        finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
+        if params.simclr_finetune:
+            for simclr_epoch in [1000, 800, 600, 400, 200, 0]:
+                for simclr_bn_stats in [True, False]:
+                    finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, simclr_bn_stats=simclr_bn_stats, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
+        else:
+            finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
