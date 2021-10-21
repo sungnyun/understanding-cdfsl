@@ -30,27 +30,27 @@ from utils import *
 
 from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
-# [CVPR2022] Re-initialization (hard-coded arguments, overrides CLI arguments)
-MANUAL_REINIT = False
-MANUAL_REINIT_BLOCKS = [1]
-
 STARTUP_METHODS = [
     'startup',
     'startup_both_body',  # teacher body + student body
     'startup_student_body',  # teacher full + student body
 ]
 
+
 def change_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
         m.momentum = 1.0
-        
+
+
 def print_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
         print (m.momentum)
-        
+
+
 def print_BNstats(m):
     if isinstance(m, nn.BatchNorm2d):
         print (m.running_mean, m.running_var)
+
 
 class Classifier(nn.Module):
     def __init__(self, dim, n_way):
@@ -67,7 +67,8 @@ class Classifier(nn.Module):
 #         x = self.relu(self.pre_fc(x))
         x = self.fc(x)
         return x
-        
+
+
 def reinit_blocks(model, block_indices: List[int]):
     """
     block_indices should be subset of { 1, 2, 3, 4 }
@@ -90,6 +91,7 @@ def reinit_blocks(model, block_indices: List[int]):
                     nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
 
     return model
+
 
 def partial_reinit(model, model_name):
     """
@@ -133,6 +135,7 @@ def partial_reinit(model, model_name):
         raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
 
     return model
+
 
 def lottery_reinit(model, model_name, checkpoint_dir):
     """
@@ -181,17 +184,20 @@ def lottery_reinit(model, model_name, checkpoint_dir):
 
     return model
 
+
 def mv_init(model):
-    # print('Mean-var init')
-    # print('-' * 80)
+    """
+    Re-randomize all layers with existing mean-var
+    :param model:
+    :return:
+    """
     for name, p in model.named_parameters():
         if 'classifier' not in name:
             mean, var = p.data.mean(), p.data.var()
-            # print('{:40s} {:<8.4f} {:<8.4}'.format(name, mean, var))
             nn.init.normal_(p.data, mean, var)
-    # print('-' * 80)
 
     return model
+
 
 def reinit_stem(model):
     """
@@ -212,6 +218,7 @@ def reinit_stem(model):
 
     return model
 
+
 def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
     finetune_epoch = 100
@@ -224,11 +231,6 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['Accuracy'])
         acc_all = []
 
-    # [CVPR2022] Determine re-init parameters
-    if MANUAL_REINIT:
-        print('Using manual hard-coded re-init arguments')
-        params.reinit_blocks = MANUAL_REINIT_BLOCKS
-        
     reinit_arguments = [
         bool(params.reinit_blocks), bool(params.partial_reinit), bool(params.lottery_reinit)
     ]
