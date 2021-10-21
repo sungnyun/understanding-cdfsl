@@ -26,13 +26,15 @@ def parse_args(script):
         # For pre-trained model (related to BN)
         parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats') 
         parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
-
+        
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
         # parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
         parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
         parser.add_argument('--partial_reinit', action='store_true', help ='Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block')
+        parser.add_argument('--lottery_reinit', action='store_true', help ='Lottery Re-initialize')
+        parser.add_argument('--full_supp_stats', action='store_true', help ='Use statistics of full support dataset for BN running stats')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
         parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')

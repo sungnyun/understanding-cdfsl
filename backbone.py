@@ -217,7 +217,7 @@ class ResNet(nn.Module):
             self.trunk[7].BNshortcut.running_mean.data.fill_(0.)
             self.trunk[7].BNshortcut.running_var.data.fill_(1.)
     
-    def return_features(self,x):
+    def return_features(self, x, return_avg=False):
         flat = Flatten()
         m = nn.AdaptiveAvgPool2d((1,1))
 
@@ -226,7 +226,11 @@ class ResNet(nn.Module):
             block2_out = self.trunk[5](block1_out)
             block3_out = self.trunk[6](block2_out)
             block4_out = self.trunk[7](block3_out)
-        return flat(m(block1_out)), flat(m(block2_out)), flat(m(block3_out)), flat(m(block4_out))
+            
+        if return_avg:
+            return flat(m(block1_out)), flat(m(block2_out)), flat(m(block3_out)), flat(m(block4_out))
+        else:
+            return flat(block1_out), flat(block2_out), flat(block3_out), flat(block4_out)
     
     def forward_bodyfreeze(self,x):
         flat = Flatten()

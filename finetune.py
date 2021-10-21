@@ -40,20 +40,34 @@ STARTUP_METHODS = [
     'startup_student_body',  # teacher full + student body
 ]
 
+def change_momentum(m):
+    if isinstance(m, nn.BatchNorm2d):
+        m.momentum = 1.0
+        
+def print_momentum(m):
+    if isinstance(m, nn.BatchNorm2d):
+        print (m.momentum)
+        
+def print_BNstats(m):
+    if isinstance(m, nn.BatchNorm2d):
+        print (m.running_mean, m.running_var)
+
 class Classifier(nn.Module):
     def __init__(self, dim, n_way):
         super(Classifier, self).__init__()
-        # self.relu = nn.ReLU()
+#         self.pre_fc = nn.Linear(dim, dim)
+#         self.relu = nn.ReLU()
         self.fc = nn.Linear(dim, n_way)
 
         with torch.no_grad():
+#             self.pre_fc.bias.data.fill_(0.)
             self.fc.bias.data.fill_(0.)
 
     def forward(self, x):
-        # x = self.relu(x)
+#         x = self.relu(self.pre_fc(x))
         x = self.fc(x)
         return x
-
+        
 def reinit_blocks(model, block_indices: List[int]):
     """
     block_indices should be subset of { 1, 2, 3, 4 }
@@ -120,19 +134,30 @@ def partial_reinit(model, model_name):
 
     return model
 
-def lottery_reinit(model, checkpoint_dir):
+def lottery_reinit(model, model_name, checkpoint_dir):
     """
     Re-initialize (Lottery ticket) {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
 
     :param model:
     :return:
     """
-    targets = {  # ResNet10 - block 4
-        'trunk.7.C2',
-        'trunk.7.BN2',
-        'trunk.7.shortcut',
-        'trunk.7.BNshortcut',
-    }
+    if model_name == 'ResNet10':
+        targets = {  # ResNet10 - block 4
+            'trunk.7.C2',
+            'trunk.7.BN2',
+            'trunk.7.shortcut',
+            'trunk.7.BNshortcut',
+        }
+    elif model_name == 'ResNet12':
+        targets = {  # ResNet12 - block 4
+            'group_3.C2',
+            'group_3.BN2',
+            'group_3.shortcut',
+            'group_3.BNshortcut',
+        }
+    elif model_name == 'ResNet18':
+        pass
+    
     consumed = set()
     
     init_model = copy.deepcopy(model)
@@ -205,7 +230,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         params.reinit_blocks = MANUAL_REINIT_BLOCKS
         
     reinit_arguments = [
-        bool(params.reinit_blocks), bool(params.partial_reinit),
+        bool(params.reinit_blocks), bool(params.partial_reinit), bool(params.lottery_reinit)
     ]
     if sum(reinit_arguments) > 1:
         raise Exception('Cannot apply multiple reinit arguments at the same time')
@@ -232,15 +257,15 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         suffixes.append('reinitblock{}'.format(blocks_string))  # changed from LBreinit
     if params.partial_reinit:
         suffixes.append('pr')
+    if params.lottery_reinit:
+        suffixes.append('lottery')
+    if params.full_supp_stats:
+        suffixes.append('fullStats')
         
     suffix = '_'.join(suffixes)
     
     basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
         dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
-    
-    custom_name = ''
-    if custom_name != '':
-        basename = basename + '_' + custom_name
     
     result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
@@ -301,7 +326,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
             pretrained_model.load_state_dict(state, strict=True)
         pretrained_model.cuda()
         pretrained_model.train()
-
+        
         ###############################################################################################
 
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
@@ -322,6 +347,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
                     partial_reinit(pretrained_model, params.model)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
+                if params.lottery_reinit:
+                    lottery_reinit(pretrained_model, params.model, checkpoint_dir)
                 # TODO [Add] Lottery ticket
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
@@ -371,6 +398,18 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
 
                 if (not params.no_tracking) or (epoch+1 == finetune_epoch):
                     with torch.no_grad():
+                        if params.full_supp_stats:
+                            # print ("before")
+                            # pretrained_model.apply(print_momentum)
+                            # pretrained_model.apply(print_BNstats)
+
+                            pretrained_model.apply(change_momentum)
+                            # print ("after")
+                            # pretrained_model.apply(print_momentum)
+                            _ = pretrained_model.feature(x_a_i)
+                            # pretrained_model.apply(print_BNstats)
+                        
+                        # Evaluation
                         pretrained_model.eval()
                         classifier.eval()
                         y_query = np.repeat(range( n_way ), n_query )
@@ -446,8 +485,6 @@ if __name__=='__main__':
         checkpoint_dir += '_aug'
     if params.track_bn:
         checkpoint_dir += '_track'
-    if params.reinit_bn_stats:
-        checkpoint_dir += '_Restats'
     if not params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
 
