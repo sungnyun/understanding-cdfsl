@@ -29,6 +29,7 @@ def parse_args(script):
         
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
+        parser.add_argument('--simclr_finetune', action='store_true', help ='Fine-tuning using the model trained by SimCLR')
         # parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
         parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')

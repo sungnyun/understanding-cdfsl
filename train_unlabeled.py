@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -18,6 +19,49 @@ from methods.protonet import ProtoNet
 
 from io_utils import parse_args, get_resume_file  
 from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot, DTD_few_shot
+
+def partial_reinit(model, model_name):
+    """
+    Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
+
+    :param model:
+    :return:
+    """
+    if model_name == 'ResNet10':
+        targets = {  # ResNet10 - block 4
+            'trunk.7.C2',
+            'trunk.7.BN2',
+            'trunk.7.shortcut',
+            'trunk.7.BNshortcut',
+        }
+    elif model_name == 'ResNet12':
+        targets = {  # ResNet12 - block 4
+            'group_3.C2',
+            'group_3.BN2',
+            'group_3.shortcut',
+            'group_3.BNshortcut',
+        }
+    elif model_name == 'ResNet18':
+        pass
+        
+    consumed = set()
+    for name, p in model.named_parameters():
+        for target in targets:
+            if target in name:
+                if 'BN' in name:
+                    if 'weight' in name:
+                        p.data.fill_(1.)
+                    else:
+                        p.data.fill_(0.)
+                else:
+                    nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
+                consumed.add(target)
+
+    remaining = targets - consumed
+    if remaining:
+        raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
+
+    return model
 
 class projector_SIMCLR(nn.Module):
     '''
@@ -210,6 +254,9 @@ if __name__=='__main__':
         image_size = 84
     pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     pretrained_model.load_state_dict(state, strict=True)
+    
+    # Re-randomization
+    partial_reinit(pretrained_model, params.model)
         
     # Make checkpoint_dir
     checkpoint_dir += '/unlabeled'

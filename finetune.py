@@ -267,24 +267,30 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
     basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
         dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
     
-    result_path = os.path.join(checkpoint_dir, basename)
+    if params.simclr_finetune:
+        result_path = os.path.join(checkpoint_dir, 'unlabeled', basename)
+    else:
+        result_path = os.path.join(checkpoint_dir, basename)
     print('Saving results to {}'.format(result_path))
 
     # Determine model weights path
     params.save_iter = -1
-    if params.method in STARTUP_METHODS:  # startup methods apply pre-training separately to each target dataset
-        if '_split' in dataset_name:  # hotfix -- startup always uses split
-            assert ('_split' == dataset_name[-6:])
-            dataset_name = dataset_name[:-6]
-        model_dir = '{}_unlabeled_20'.format(dataset_name)
-        modelfile = os.path.join(checkpoint_dir, model_dir, 'checkpoint_best.pkl')
+    if params.simclr_finetune:
+        modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_999.tar'.format(dataset_name.split('_')[0]))
     else:
-        if params.save_iter != -1:
-            modelfile = get_assigned_file(checkpoint_dir, params.save_iter)
-        elif params.method in ['baseline', 'baseline++', 'baseline_body']:
-            modelfile = get_resume_file(checkpoint_dir)
+        if params.method in STARTUP_METHODS:  # startup methods apply pre-training separately to each target dataset
+            if '_split' in dataset_name:  # hotfix -- startup always uses split
+                assert ('_split' == dataset_name[-6:])
+                dataset_name = dataset_name[:-6]
+            model_dir = '{}_unlabeled_20'.format(dataset_name)
+            modelfile = os.path.join(checkpoint_dir, model_dir, 'checkpoint_best.pkl')
         else:
-            modelfile = get_best_file(checkpoint_dir)
+            if params.save_iter != -1:
+                modelfile = get_assigned_file(checkpoint_dir, params.save_iter)
+            elif params.method in ['baseline', 'baseline++', 'baseline_body']:
+                modelfile = get_resume_file(checkpoint_dir)
+            else:
+                modelfile = get_best_file(checkpoint_dir)
 
     if not modelfile or not os.path.exists(modelfile):
         raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
@@ -295,15 +301,6 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, freez
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             task_all = []
             task_all_nil = []
-
-        # load pretrained model on miniImageNet or tieredImageNet
-        params.save_iter = -1
-        if params.save_iter != -1:
-            modelfile   = get_assigned_file(checkpoint_dir, params.save_iter)
-        elif params.method in ['baseline', 'baseline++', 'baseline_body'] :
-            modelfile   = get_resume_file(checkpoint_dir)
-        else:
-            modelfile   = get_best_file(checkpoint_dir)
 
         if params.method in STARTUP_METHODS:
             tmp = torch.load(modelfile)  # note, tmp is only used to load the model weights
@@ -487,12 +484,16 @@ if __name__=='__main__':
         checkpoint_dir += '_track'
     if not params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
-
+        
     freeze_backbone = params.freeze_backbone
     #########################################################################
     
     dataset_names = params.dataset_names
-    split = params.startup_split
+    
+    if params.simclr_finetune:
+        split = True
+    else:
+        split = params.startup_split
     
     for dataset_name in dataset_names:
         print (dataset_name)
@@ -514,10 +515,10 @@ if __name__=='__main__':
             novel_loader = datamgr.get_data_loader(aug=False, train=False)
         else:
             novel_loader = datamgr.get_data_loader(aug=False)
-
+            
         if split:
             dataset_name += '_split'
-
+        
         print('Data loader initialized successfully!')
 
         # replace finetine() with your own method
