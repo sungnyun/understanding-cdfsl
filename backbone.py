@@ -1,9 +1,12 @@
 import torch
+import torchvision
+from torch import Tensor
 from torch.autograd import Variable
 import torch.nn as nn
 import math
 import numpy as np
 import torch.nn.functional as F
+from torch.hub import load_state_dict_from_url
 from torch.nn.utils.weight_norm import WeightNorm
 
 def init_layer(L):
@@ -348,3 +351,36 @@ class ResNet12(torch.nn.Module):
         x = self.up_to_embedding(x)
         # return F.relu(self.bn_out(x.mean(3).mean(2)), True)
         return F.relu(x.mean(3).mean(2), True)
+
+
+class ResNet18(torchvision.models.resnet.ResNet):
+    def __init__(self, track_bn):
+        def norm_layer(*args, **kwargs):
+            return nn.BatchNorm2d(*args, **kwargs, track_running_stats=track_bn)
+        super().__init__(torchvision.models.resnet.BasicBlock, [2, 2, 2, 2], norm_layer=norm_layer)
+        del self.fc
+
+    def load_imagenet_weights(self, progress=True):
+        state_dict = load_state_dict_from_url(torchvision.models.resnet.model_urls['resnet18'],
+                                              progress=progress)
+        missing, unexpected = self.load_state_dict(state_dict, strict=False)
+        if len(missing) > 0:
+            raise AssertionError('Model code may be incorrect')
+
+    def _forward_impl(self, x: Tensor) -> Tensor:
+        # See note [TorchScript super()]
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        # x = self.fc(x)
+
+        return x

@@ -59,6 +59,10 @@ if __name__=='__main__':
         model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
     elif params.model == 'ResNet12':
         model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.model == 'ResNet18':
+        if params.reinit_bn_stats:
+            raise AssertionError('Not supported')
+        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
     else:
         raise ValueError('Unknown extractor')
 

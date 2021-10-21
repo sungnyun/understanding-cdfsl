@@ -329,7 +329,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         #     else:
         #         state[newkey] = state.pop(key)
 
-        if params.method in STARTUP_METHODS:  # extractor state_dict is saved separately in startup code
+        if params.model == 'ResNet18':
+            if state:
+                pretrained_model.load_state_dict(state, strict=True)
+            else:
+                pretrained_model.load_imagenet_weights()
+        elif params.method in STARTUP_METHODS:  # extractor state_dict is saved separately in startup code
             pretrained_model.feature.load_state_dict(state, strict=True)
         else:
             pretrained_model.load_state_dict(state, strict=True)
