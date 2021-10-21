@@ -17,7 +17,7 @@ sys.path.append("../")
 from configs import *
 
 class CustomDatasetFromImages(Dataset):
-    def __init__(self, split, csv_path=ISIC_path + "/ISIC2018_Task3_Training_GroundTruth.csv", \
+    def __init__(self, split, labeled, csv_path=ISIC_path + "/ISIC2018_Task3_Training_GroundTruth.csv", \
         image_path=ISIC_path):
         """
         Args:
@@ -43,8 +43,13 @@ class CustomDatasetFromImages(Dataset):
         self.data_len = len(self.data_info.index)
 
         if split:
-            print("Using Split: ", split)
-            split = './datasets/split_seed_1/ISIC_labeled_80.csv'
+            if labeled:
+                print("Using labeled Split: ", split)
+                split = './datasets/split_seed_1/ISIC_labeled_80.csv'
+            else:
+                print("Using unlabeled Split: ", split)
+                split = './datasets/split_seed_1/ISIC_unlabeled_20.csv'
+
             split = pd.read_csv(split)['img_path'].values
             # construct the index
             ind = np.concatenate([np.where(self.image_name == j)[0] for j in split])
@@ -76,7 +81,7 @@ class CustomDatasetFromImages(Dataset):
 
 identity = lambda x:x
 class SimpleDataset:
-    def __init__(self, transform, target_transform=identity):
+    def __init__(self, transform, split=False, target_transform=identity):
         self.transform = transform
         self.target_transform = target_transform
 
@@ -85,9 +90,9 @@ class SimpleDataset:
         self.meta['image_names'] = []
         self.meta['image_labels'] = []
 
+        self.d = CustomDatasetFromImages(split=split, labeled=False)
 
-        d = CustomDatasetFromImages(split=False)
-        for i, (data, label) in enumerate(d):
+        for i, (data, label) in enumerate(self.d):
             self.meta['image_names'].append(data)
             self.meta['image_labels'].append(label)  
 
@@ -112,7 +117,7 @@ class SetDataset:
         for cl in self.cl_list:
             self.sub_meta[cl] = []
 
-        d = CustomDatasetFromImages(split=split)
+        d = CustomDatasetFromImages(split=split, labeled=True)
 
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
@@ -177,7 +182,7 @@ class TransformLoader:
             method = add_transforms.ImageJitter( self.jitter_param )
             return method
         method = getattr(transforms, transform_type)
-        if transform_type=='RandomSizedCrop':
+        if transform_type=='RandomResizedCrop':
             return method(self.image_size) 
         elif transform_type=='CenterCrop':
             return method(self.image_size) 
@@ -190,7 +195,7 @@ class TransformLoader:
 
     def get_composed_transform(self, aug = False):
         if aug:
-            transform_list = ['RandomSizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            transform_list = ['RandomResizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
         else:
             transform_list = ['Resize','CenterCrop', 'ToTensor', 'Normalize']
 
@@ -213,7 +218,7 @@ class SimpleDataManager(DataManager):
         transform = self.trans_loader.get_composed_transform(aug)
         dataset = SimpleDataset(transform)
 
-        data_loader_params = dict(batch_size = self.batch_size, shuffle = True, num_workers = 12, pin_memory = True)       
+        data_loader_params = dict(batch_size = self.batch_size, shuffle = True, num_workers = 2, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
 
         return data_loader
@@ -233,7 +238,7 @@ class SetDataManager(DataManager):
         transform = self.trans_loader.get_composed_transform(aug)
         dataset = SetDataset(self.batch_size, transform, self.split)
         sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide )  
-        data_loader_params = dict(batch_sampler = sampler,  num_workers = 8, pin_memory = True)       
+        data_loader_params = dict(batch_sampler = sampler,  num_workers = 2, pin_memory = True)       
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
         return data_loader
 

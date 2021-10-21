@@ -19,8 +19,11 @@ import sys
 sys.path.append("../")
 from configs import *
 
-def construct_subset(dataset, split):
-    split = './datasets/split_seed_1/tieredImageNet_test_labeled_80.csv'
+def construct_subset(dataset, labeled):
+    if labeled:
+        split = './datasets/split_seed_1/tieredImageNet_test_labeled_80.csv'
+    else:
+        split = './datasets/split_seed_1/tieredImageNet_test_unlabeled_20.csv'
     split = pd.read_csv(split)['img_path'].values
     root = dataset.root
 
@@ -42,7 +45,7 @@ def construct_subset(dataset, split):
 identity = lambda x:x
 
 class SimpleDataset:
-    def __init__(self, transform, train, target_transform=identity):
+    def __init__(self, transform, train, split=False, target_transform=identity):
         self.transform = transform
         self.target_transform = target_transform
 
@@ -51,11 +54,15 @@ class SimpleDataset:
         self.meta['image_labels'] = []
         
         if train:
-            d = ImageFolder(tieredImageNet_path)
+            self.d = ImageFolder(tieredImageNet_path)
         else:
-            d = ImageFolder(tieredImageNet_test_path)
+            self.d = ImageFolder(tieredImageNet_test_path)
             
-        for i, (data, label) in enumerate(d):
+        if split:
+            print("Using unlabeled split: ", split)
+            self.d = construct_subset(self.d, labeled=False)
+
+        for i, (data, label) in enumerate(self.d):
             self.meta['image_names'].append(data)
             self.meta['image_labels'].append(label)
             
@@ -85,8 +92,8 @@ class SetDataset:
             d = ImageFolder(tieredImageNet_test_path)
 
         if split:
-            print("Using split: ", split)
-            d = construct_subset(d, split)
+            print("Using labeled split: ", split)
+            d = construct_subset(d, labeled=True)
             
         for i, (data, label) in enumerate(d):
             self.sub_meta[label].append(data)
@@ -193,7 +200,7 @@ class SimpleDataManager(DataManager):
         transform = self.trans_loader.get_composed_transform(aug)
         dataset = SimpleDataset(transform, train)
 
-        data_loader_params = dict(batch_size=self.batch_size, shuffle=True, num_workers = 12, pin_memory=True)
+        data_loader_params = dict(batch_size=self.batch_size, shuffle=True, num_workers = 2, pin_memory=True)
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
 
         return data_loader
@@ -214,6 +221,6 @@ class SetDataManager(DataManager):
         transform = self.trans_loader.get_composed_transform(aug)
         dataset = SetDataset(self.batch_size, transform, train, self.split)
         sampler = EpisodicBatchSampler(len(dataset), self.n_way, self.n_eposide)
-        data_loader_params = dict(batch_sampler=sampler, num_workers=12, pin_memory=True)
+        data_loader_params = dict(batch_sampler=sampler, num_workers=2, pin_memory=True)
         data_loader = torch.utils.data.DataLoader(dataset, **data_loader_params)
         return data_loader

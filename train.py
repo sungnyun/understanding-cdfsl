@@ -81,7 +81,7 @@ if __name__=='__main__':
 #             image_size = 224
 #             bsize = 256
 #             datamgr = ImageNet_few_shot.SimpleDataManager(image_size, batch_size=bsize)
-#             base_loader = datamgr.get_data_loader(aug=params.train_aug, num_workers=8)
+#             base_loader = datamgr.get_data_loader(aug=params.train_aug, num_workers=2)
 #             params.num_classes = 1000
         else:
             raise ValueError('Unknown dataset')
