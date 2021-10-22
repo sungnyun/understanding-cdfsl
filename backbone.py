@@ -536,7 +536,7 @@ class BasicBlock(torch.nn.Module):
 
 
 class ResNet18_84x84(torch.nn.Module):
-    def __init__(self, track_bn, block=BasicBlock, n_blocks=[1,1,2,2], keep_prob=1.0, avg_pool=False, drop_rate=0.0,
+    def __init__(self, track_bn, block=BasicBlock, n_blocks=[1,1,2,2], keep_prob=1.0, avg_pool=True, drop_rate=0.1,
                  dropblock_size=5, num_classes=-1, use_se=False):
         super(ResNet18_84x84, self).__init__()
         self.final_feat_dim = 640
