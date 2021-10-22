@@ -466,23 +466,21 @@ if __name__=='__main__':
 
     if params.dataset == 'miniImageNet':
         model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-        image_size = 224
     # elif params.model == 'ResNet12':
     #     model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
     elif params.dataset == 'tieredImageNet':
         if params.reinit_bn_stats:
             raise NotImplementedError('Not supported')
         model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
-        image_size = 84
     elif params.dataset  == 'ImageNet':
         if params.reinit_bn_stats:
             raise NotImplementedError('Not supported')
         model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
-        image_size = 224
     else:
         raise ValueError('Unknown extractor')
 
     ##################################################################
+    image_size = 224  # for every evaluation dataset except tieredImageNet
     iter_num = 600
 
     # params.n_shot = 5
@@ -530,6 +528,7 @@ if __name__=='__main__':
         if dataset_name == "miniImageNet":
             datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
         if dataset_name == "tieredImageNet":
+            image_size = 84
             datamgr = tieredImageNet_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         elif dataset_name == "CropDisease":
             datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)

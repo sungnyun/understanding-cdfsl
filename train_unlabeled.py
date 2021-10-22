@@ -253,10 +253,8 @@ if __name__=='__main__':
     
     if pretrained_dataset == 'miniImageNet':
         params.num_classes = 64
-        image_size = 224
     elif pretrained_dataset == 'tieredImageNet':
         params.num_classes = 351
-        image_size = 84
     pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     pretrained_model.load_state_dict(state, strict=True)
     
@@ -272,7 +270,8 @@ if __name__=='__main__':
     stop_epoch = params.stop_epoch
 
     dataset_names = params.dataset_names
-
+    
+    image_size = 224 # for all unlabeled target dataset except tieredImageNet
     for dataset_name in dataset_names:
         print (dataset_name)
         print('Initializing data loader...')
@@ -282,6 +281,7 @@ if __name__=='__main__':
             dataset = miniImageNet_few_shot.SimpleDataset(
                 apply_twice(transform), train=False, split=True)
         if dataset_name == "tieredImageNet":
+            image_size = 84
             transform = tieredImageNet_few_shot.TransformLoader(
                 image_size).get_composed_transform(aug=True)
             dataset = tieredImageNet_few_shot.SimpleDataset(
