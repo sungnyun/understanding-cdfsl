@@ -13,6 +13,7 @@ import math
 import time
 import os
 import glob
+import warnings
 from itertools import combinations
 from tqdm import tqdm
 
@@ -124,12 +125,14 @@ def convert_layer_names(model_name, layers) -> Dict:
             targets['group_3.{}'.format(layer)] = layer_type
         elif model_name == 'ResNet18':
             if layer in ['C0', 'BN0', 'shortcut', 'BNshortcut']:
-                raise ValueError('Unsupported layer name {} for ResNet10'.format(layer))
+                raise ValueError('Unsupported layer name {} for ResNet18'.format(layer))
             mapping = {
                 'C1': 'conv1',
                 'BN1': 'bn1',
                 'C2': 'conv2',
                 'BN2': 'bn2',
+                'C3': 'conv3',
+                'BN3': 'bn3'
             }
             targets['layer4.1.{}'.format(mapping[layer])] = layer_type
 
@@ -297,7 +300,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             else:
                 modelfile = get_best_file(checkpoint_dir)
 
-    if params.model != 'ResNet18' and not (modelfile and os.path.exists(modelfile)):
+    if params.dataset != 'ImageNet' and not (modelfile and os.path.exists(modelfile)):
         raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
     print('Using model weights path {}'.format(modelfile))
 
@@ -307,8 +310,9 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             task_all = []
             task_all_nil = []
 
-        if params.model == 'ResNet18':
+        if params.dataset == 'ImageNet':
             try:
+                warnings.warn('Not using the PyTorch pretrained model!')
                 tmp = torch.load(modelfile)
                 state = tmp['state']  # state dict
             except:
@@ -328,10 +332,11 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         #     else:
         #         state[newkey] = state.pop(key)
 
-        if params.model == 'ResNet18':
+        if params.dataset == 'ImageNet':
             if state:
                 pretrained_model.load_state_dict(state, strict=True)
             else:
+                assert params.model == 'ResNet18'
                 pretrained_model.load_imagenet_weights()
         elif params.method in STARTUP_METHODS:  # extractor state_dict is saved separately in startup code
             pretrained_model.feature.load_state_dict(state, strict=True)
@@ -459,22 +464,25 @@ if __name__=='__main__':
     np.random.seed(10)
     params = parse_args('train')
 
-    if params.model == 'ResNet10':
+    if params.dataset == 'miniImageNet':
         model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet12':
-        model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet18':
+        image_size = 224
+    # elif params.model == 'ResNet12':
+    #     model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.dataset == 'tieredImageNet':
         if params.reinit_bn_stats:
-            raise AssertionError('Not supported')
+            raise NotImplementedError('Not supported')
+        model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
+        image_size = 84
+    elif params.dataset  == 'ImageNet':
+        if params.reinit_bn_stats:
+            raise NotImplementedError('Not supported')
         model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
+        image_size = 224
     else:
         raise ValueError('Unknown extractor')
 
     ##################################################################
-    if params.dataset == 'miniImageNet':
-        image_size = 224
-    elif params.dataset == 'tieredImageNet':
-        image_size = 84
     iter_num = 600
 
     # params.n_shot = 5

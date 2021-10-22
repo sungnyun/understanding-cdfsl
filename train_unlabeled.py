@@ -214,13 +214,18 @@ if __name__=='__main__':
     batch_size = 32
     temperature = 1
 
-    # Load pre-trained model
-    if params.model == 'ResNet10':
+    if params.dataset == 'miniImageNet':
         model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet12':
-        model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet18':
-        pass
+    # elif params.model == 'ResNet12':
+    #     model_dict = {params.model: backbone.ResNet12(track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
+    elif params.dataset == 'tieredImageNet':
+        if params.reinit_bn_stats:
+            raise NotImplementedError('Not supported')
+        model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
+    elif params.dataset  == 'ImageNet':
+        if params.reinit_bn_stats:
+            raise NotImplementedError('Not supported')
+        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
     else:
         raise ValueError('Unknown extractor')
 

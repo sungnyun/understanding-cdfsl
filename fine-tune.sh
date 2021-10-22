@@ -22,9 +22,9 @@ do
      --dataset_names miniImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking
 
     # tieredImageNet
-    python ./finetune.py --dataset tieredImageNet --model ResNet12 --method baseline --track_bn \
+    python ./finetune.py --dataset tieredImageNet --model ResNet18 --method baseline --track_bn \
      --dataset_names tieredImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking
-    python ./finetune.py --dataset tieredImageNet --model ResNet12 --method baseline\
+    python ./finetune.py --dataset tieredImageNet --model ResNet18 --method baseline\
      --dataset_names tieredImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking
 
     ##### With Re-initialization
@@ -37,12 +37,12 @@ do
      --partial_reinit C2 BN2 shortcut BNshortcut
 
     # tieredImageNet
-    python ./finetune.py --dataset tieredImageNet --model ResNet12 --method baseline --track_bn \
+    python ./finetune.py --dataset tieredImageNet --model ResNet18 --method baseline --track_bn \
      --dataset_names tieredImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking \
-     --partial_reinit C2 BN2 shortcut BNshortcut
-    python ./finetune.py --dataset tieredImageNet --model ResNet12 --method baseline\
+     --partial_reinit C3 BN3
+    python ./finetune.py --dataset tieredImageNet --model ResNet18 --method baseline\
      --dataset_names tieredImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking \
-     --partial_reinit C2 BN2 shortcut BNshortcut
+     --partial_reinit C3 BN3
 done
 
 ####################### 80% testset (following STARTUP) #######################
