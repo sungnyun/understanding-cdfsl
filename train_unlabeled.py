@@ -20,7 +20,7 @@ from methods.protonet import ProtoNet
 from io_utils import parse_args, get_resume_file  
 from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot, DTD_few_shot
 
-def partial_reinit(model, model_name):
+def partial_reinit(model, model_name, pretrained_dataset):
     """
     Re-initialize {Conv2, BN2, ShortCutConv, ShortCutBN} from last block
 
@@ -42,13 +42,22 @@ def partial_reinit(model, model_name):
             'group_3.BNshortcut',
         }
     elif model_name == 'ResNet18':
-        pass
+        if pretrained_dataset == 'tieredImageNet':
+            targets = {
+                'layer4.1.conv3',
+                'layer4.1.bn3',
+            }
+        elif pretrained_dataset == 'ImageNet':
+            targets = {
+                'layer4.1.conv2',
+                'layer4.1.bn2',
+            }
         
     consumed = set()
     for name, p in model.named_parameters():
         for target in targets:
             if target in name:
-                if 'BN' in name:
+                if 'BN' in name or 'bn' in name:
                     if 'weight' in name:
                         p.data.fill_(1.)
                     else:
@@ -239,27 +248,32 @@ if __name__=='__main__':
     if not params.method in ['baseline', 'baseline++', 'baseline_body']:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
     
-    params.save_iter = -1
-    if params.save_iter != -1:
-        modelfile = get_assigned_file(checkpoint_dir, params.save_iter)
-    elif params.method in ['baseline', 'baseline++', 'baseline_body']:
-        modelfile = get_resume_file(checkpoint_dir)
-    else:
-        modelfile = get_best_file(checkpoint_dir)
-    if not modelfile or not os.path.exists(modelfile):
-        raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
-    print('Using model weights path {}'.format(modelfile))
-    state = torch.load(modelfile)['state']  # state dict
+    if pretrained_dataset in ['miniImageNet', 'tieredImageNet']:
+        params.save_iter = -1
+        if params.save_iter != -1:
+            modelfile = get_assigned_file(checkpoint_dir, params.save_iter)
+        elif params.method in ['baseline', 'baseline++', 'baseline_body']:
+            modelfile = get_resume_file(checkpoint_dir)
+        else:
+            modelfile = get_best_file(checkpoint_dir)
+        if not modelfile or not os.path.exists(modelfile):
+            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
+        print('Using model weights path {}'.format(modelfile))
+        state = torch.load(modelfile)['state']  # state dict
     
-    if pretrained_dataset == 'miniImageNet':
-        params.num_classes = 64
-    elif pretrained_dataset == 'tieredImageNet':
-        params.num_classes = 351
-    pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
-    pretrained_model.load_state_dict(state, strict=True)
-    
+        if pretrained_dataset == 'miniImageNet':
+            params.num_classes = 64
+        elif pretrained_dataset == 'tieredImageNet':
+            params.num_classes = 351
+        pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
+        pretrained_model.load_state_dict(state, strict=True)
+    elif pretrained_dataset == 'ImageNet':
+        params.num_classes = 1000
+        pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
+        pretrained_model.feature.load_imagenet_weights()
+        
     # Re-randomization
-    partial_reinit(pretrained_model, params.model)
+    partial_reinit(pretrained_model, params.model, pretrained_dataset)
         
     # Make checkpoint_dir
     checkpoint_dir += '/unlabeled'
