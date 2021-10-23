@@ -166,12 +166,16 @@ class TransformLoader:
             return method([int(self.image_size*1.15), int(self.image_size*1.15)])
         elif transform_type=='Normalize':
             return method(**self.normalize_param )
+        elif transform_type == 'GaussianBlur':
+            return transforms.RandomApply(torch.nn.ModuleList([method((5,5))]), p=0.3)
+        elif transform_type == 'RandomGrayscale':
+            return method(p=0.1)
         else:
             return method()
 
     def get_composed_transform(self, aug = False):
         if aug:
-            transform_list = ['RandomResizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            transform_list = ['RandomResizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'GaussianBlur', 'RandomGrayscale', 'ToTensor', 'Normalize']
         else:
             transform_list = ['Resize','CenterCrop', 'ToTensor', 'Normalize']
 
