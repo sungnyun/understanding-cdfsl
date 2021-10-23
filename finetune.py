@@ -312,9 +312,9 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
         if params.dataset == 'ImageNet':
             try:
-                warnings.warn('Not using the PyTorch pretrained model!')
                 tmp = torch.load(modelfile)
                 state = tmp['state']  # state dict
+                warnings.warn('Not using the PyTorch pretrained model!')
             except:
                 state = None
         elif params.method in STARTUP_METHODS:
@@ -337,7 +337,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                 pretrained_model.load_state_dict(state, strict=True)
             else:
                 assert params.model == 'ResNet18'
-                pretrained_model.load_imagenet_weights()
+                pretrained_model.feature.load_imagenet_weights()
         elif params.method in STARTUP_METHODS:  # extractor state_dict is saved separately in startup code
             pretrained_model.feature.load_state_dict(state, strict=True)
         else:
@@ -511,6 +511,8 @@ if __name__=='__main__':
         checkpoint_dir += '_track'
     if not params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         checkpoint_dir += '_%dway_%dshot'%(params.train_n_way, params.n_shot)
+    if not os.path.exists(checkpoint_dir):
+        os.makedirs(checkpoint_dir)
         
     freeze_backbone = params.freeze_backbone
     #########################################################################
