@@ -491,6 +491,8 @@ if __name__=='__main__':
             params.num_classes = 64
         elif params.dataset == 'tieredImageNet':
             params.num_classes = 351
+        elif params.dataset == 'ImageNet':
+            params.num_classes = 1000
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     elif params.method == 'baseline++':
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
