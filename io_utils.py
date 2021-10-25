@@ -27,6 +27,10 @@ def parse_args(script):
         parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats') 
         parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
         
+        # For SimCLR
+        parser.add_argument('--aug_mode', default='base', help='augmentation for SimCLR training')
+        parser.add_argument('--use_base_classes'   , action='store_true',  help='supervised training with self-training') 
+        
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
         parser.add_argument('--simclr_finetune', action='store_true', help ='Fine-tuning using the model trained by SimCLR')

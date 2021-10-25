@@ -1,7 +1,8 @@
 # This code is modified from https://github.com/facebookresearch/low-shot-shrink-hallucinate
 
 import torch
-from PIL import Image
+import random
+from PIL import Image, ImageFilter
 import numpy as np
 import pandas as pd
 import torchvision.transforms as transforms
@@ -169,6 +170,15 @@ class EpisodicBatchSampler(object):
         for i in range(self.n_episodes):
             yield torch.randperm(self.n_classes)[:self.n_way]
 
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+    def __init__(self, sigma=[.1, 2.]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return x
 class TransformLoader:
     def __init__(self, image_size, 
                  normalize_param    = dict(mean= [0.485, 0.456, 0.406] , std=[0.229, 0.224, 0.225]),
@@ -178,30 +188,46 @@ class TransformLoader:
         self.jitter_param = jitter_param
     
     def parse_transform(self, transform_type):
-        if transform_type=='ImageJitter':
-            method = add_transforms.ImageJitter( self.jitter_param )
-            return method
-        method = getattr(transforms, transform_type)
-        if transform_type=='RandomResizedCrop':
-            return method(self.image_size) 
-        elif transform_type=='CenterCrop':
-            return method(self.image_size) 
-        elif transform_type=='Resize':
-            return method([int(self.image_size*1.15), int(self.image_size*1.15)])
-        elif transform_type=='Normalize':
-            return method(**self.normalize_param )
-        elif transform_type == 'GaussianBlur':
-            return transforms.RandomApply(torch.nn.ModuleList([method((5,5))]), p=0.3)
+        if transform_type == 'RandomColorJitter':
+            return transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],p=0.8)
         elif transform_type == 'RandomGrayscale':
-            return method(p=0.1)
+            return transforms.RandomGrayscale(p=0.2)
+        elif transform_type == 'RandomGaussianBlur':
+            return transforms.RandomApply([GaussianBlur([.1, 2.])],p=0.5)
+        elif transform_type == 'RandomCrop':
+            return transforms.RandomCrop(self.image_size,padding=4)
+        elif transform_type == 'RandomResizedCrop':
+            return transforms.RandomResizedCrop(self.image_size,scale=(0.2, 1.))
+        elif transform_type == 'CenterCrop':
+            return transforms.CenterCrop(self.image_size)
+        elif transform_type == 'Resize_up':
+            return transforms.Resize(
+                [int(self.image_size * 1.25),
+                 int(self.image_size * 1.25)])
+        elif transform_type == 'Normalize':
+            return transforms.Normalize(**self.normalize_param)
+        elif transform_type == 'Resize':
+            return transforms.Resize(
+                [int(self.image_size),
+                 int(self.image_size)])
+        elif transform_type == 'RandomRotation':
+            return transforms.RandomRotation(degrees=10)
         else:
+            method = getattr(transforms, transform_type)
             return method()
 
-    def get_composed_transform(self, aug = False):
+    def get_composed_transform(self, aug=False, aug_mode='base'):
         if aug:
-            transform_list = ['RandomResizedCrop', 'ImageJitter', 'RandomHorizontalFlip', 'GaussianBlur', 'RandomGrayscale', 'ToTensor', 'Normalize']
+            if aug_mode == 'base':
+                transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            elif aug_mode == 'strong':
+                transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            elif aug_mode == 'medical_color':
+                transform_list = ['Resize', 'RandomColorJitter', 'RandomGrayscale', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            elif aug_mode == 'medical_gray':
+                transform_list = ['Resize', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
         else:
-            transform_list = ['Resize','CenterCrop', 'ToTensor', 'Normalize']
+            transform_list = ['Resize', 'ToTensor', 'Normalize']
 
         transform_funcs = [ self.parse_transform(x) for x in transform_list]
         transform = transforms.Compose(transform_funcs)

@@ -2,6 +2,7 @@ import math
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.autograd import Variable
 import torch.optim
 import torch.optim.lr_scheduler as lr_scheduler
@@ -169,8 +170,8 @@ class NTXentLoss(nn.Module):
         return loss / (2 * self.batch_size)
 
 def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
-                    checkpoint_dir, start_epoch, stop_epoch, params):
-
+                    checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf):
+    
     model.train()
     clf_SIMCLR.train()
 
@@ -178,13 +179,24 @@ def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
     clf_SIMCLR.cuda()
     criterion_SIMCLR.cuda()
 
-    optimizer = torch.optim.SGD([
-            {'params': pretrained_model.parameters()},
+    opt_params = [
+            {'params': model.parameters()},
             {'params': clf_SIMCLR.parameters()}
-        ],
+        ]
+    
+    if base_loader is not None and clf is not None:
+        clf.train()
+        clf.cuda()
+
+        base_loader_iter = iter(base_loader)
+        nll_criterion = nn.NLLLoss(reduction='mean').cuda()
+        opt_params.append({'params': clf.parameters()})
+
+    optimizer = torch.optim.SGD(opt_params,
             lr=0.1, momentum=0.9,
             weight_decay=1e-4,
             nesterov=False)
+    
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                      milestones=[400,600,800],
@@ -201,13 +213,25 @@ def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
         for i, (X, y) in enumerate(loader):
             f1 = model.feature(X[0].cuda())
             f2 = model.feature(X[1].cuda())
-            loss_SIMCLR = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
+            loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
+
+            if base_loader is not None:
+                try:
+                    X_base, y_base = base_loader_iter.next()
+                except StopIteration:
+                    base_loader_iter = iter(base_loader)
+                    X_base, y_base = base_loader_iter.next()
+
+                features_base = model.feature(X_base.cuda())
+                logits_base = clf(features_base)
+                log_probability_base = F.log_softmax(logits_base, dim=1)
+                loss += nll_criterion(log_probability_base, y_base.cuda())
 
             optimizer.zero_grad()
-            loss_SIMCLR.backward()
+            loss.backward()
             optimizer.step()
 
-            epoch_loss += loss_SIMCLR.item()
+            epoch_loss += loss.item()
         scheduler.step()
         print ('epoch: {}, loss: {}'.format(epoch, epoch_loss/len(loader)))
 
@@ -289,35 +313,55 @@ if __name__=='__main__':
     for dataset_name in dataset_names:
         print (dataset_name)
         print('Initializing data loader...')
+        # If you use base classes, prepare supervised learning based on source domain
+        if params.use_base_classes:
+            print ('Using base classes!')
+            if pretrained_dataset == 'miniImageNet':
+                datamgr = miniImageNet_few_shot.SimpleDataManager(image_size=224, batch_size=batch_size)
+                base_loader = datamgr.get_data_loader(aug=params.train_aug)
+                params.num_classes = 64
+                clf = nn.Linear(pretrained_model.feature.final_feat_dim, params.num_classes)
+            elif pretrained_dataset == 'tieredImageNet':
+                datamgr = tieredImageNet_few_shot.SimpleDataManager(image_size=84, batch_size=batch_size)
+                base_loader = datamgr.get_data_loader(aug=params.train_aug)
+                params.num_classes = 351
+                clf = nn.Linear(pretrained_model.feature.final_feat_dim, params.num_classes)
+            else:
+                base_loader = None
+                clf = None
+        else:
+            base_loader = None
+            clf = None
+
         if dataset_name == "miniImageNet":
             transform = miniImageNet_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = miniImageNet_few_shot.SimpleDataset(
                 apply_twice(transform), train=False, split=True)
         if dataset_name == "tieredImageNet":
             image_size = 84
             transform = tieredImageNet_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = tieredImageNet_few_shot.SimpleDataset(
                 apply_twice(transform), train=False, split=True)
         elif dataset_name == "CropDisease":
             transform = CropDisease_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = CropDisease_few_shot.SimpleDataset(
                 apply_twice(transform), split=True)
         elif dataset_name == "EuroSAT":
             transform = EuroSAT_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = EuroSAT_few_shot.SimpleDataset(
                 apply_twice(transform), split=True)
         elif dataset_name == "ISIC":
             transform = ISIC_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = ISIC_few_shot.SimpleDataset(
                 apply_twice(transform), split=True)
         elif dataset_name == "ChestX":
             transform = Chest_few_shot.TransformLoader(
-                image_size).get_composed_transform(aug=True)
+                image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = Chest_few_shot.SimpleDataset(
                 apply_twice(transform), split=True)
 
@@ -331,4 +375,4 @@ if __name__=='__main__':
         print('Data loader initialized successfully!, length: {}'.format(len(dataset)))
 
         train_unlabeled(dataset_name, novel_loader, pretrained_model, clf_SIMCLR, criterion_SIMCLR,
-                        checkpoint_dir, start_epoch, stop_epoch, params)
+                        checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf)

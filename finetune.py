@@ -439,7 +439,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                         top1_correct = np.sum(topk_ind[:,0] == y_query)
                         correct_this, count_this = float(top1_correct), len(y_query)
                         task_all.append((correct_this/count_this*100))
-
+                    print ((correct_this/count_this*100))
                 else:
                     task_all.append(0.0)
 
@@ -456,8 +456,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             top1_correct = np.sum(topk_ind[:,0] == y_query)
             correct_this, count_this = float(top1_correct), len(y_query)
             acc_all.append((correct_this/ count_this *100))
-
         ###############################################################################################
+    print ('{:4.2f} +- {:4.2f}'.format(df.mean()[-1], 1.96*df.std()[-1]/np.sqrt(iter_num)))
 
 
 if __name__=='__main__':
