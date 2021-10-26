@@ -188,16 +188,6 @@ class EpisodicBatchSampler(object):
         for i in range(self.n_episodes):
             yield torch.randperm(self.n_classes)[:self.n_way]
 
-class GaussianBlur(object):
-    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
-    def __init__(self, sigma=[.1, 2.]):
-        self.sigma = sigma
-
-    def __call__(self, x):
-        sigma = random.uniform(self.sigma[0], self.sigma[1])
-        x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
-        return x
-        
 class TransformLoader:
     def __init__(self, image_size, 
                  normalize_param    = dict(mean= [0.485, 0.456, 0.406] , std=[0.229, 0.224, 0.225]),
@@ -208,21 +198,21 @@ class TransformLoader:
     
     def parse_transform(self, transform_type):
         if transform_type == 'RandomColorJitter':
-            return transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.1)],p=0.8)
+            return transforms.RandomApply([transforms.ColorJitter(0.4, 0.4, 0.4, 0.0)],p=1.0)
         elif transform_type == 'RandomGrayscale':
-            return transforms.RandomGrayscale(p=0.2)
+            return transforms.RandomGrayscale(p=0.1)
         elif transform_type == 'RandomGaussianBlur':
-            return transforms.RandomApply([GaussianBlur([.1, 2.])],p=0.5)
+            return transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5,5))],p=0.3)
         elif transform_type == 'RandomCrop':
             return transforms.RandomCrop(self.image_size,padding=4)
         elif transform_type == 'RandomResizedCrop':
-            return transforms.RandomResizedCrop(self.image_size,scale=(0.2, 1.))
+            return transforms.RandomResizedCrop(self.image_size)
         elif transform_type == 'CenterCrop':
             return transforms.CenterCrop(self.image_size)
         elif transform_type == 'Resize_up':
             return transforms.Resize(
-                [int(self.image_size * 1.25),
-                 int(self.image_size * 1.25)])
+                [int(self.image_size * 1.15),
+                 int(self.image_size * 1.15)])
         elif transform_type == 'Normalize':
             return transforms.Normalize(**self.normalize_param)
         elif transform_type == 'Resize':
