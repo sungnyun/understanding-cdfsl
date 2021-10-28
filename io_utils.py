@@ -29,7 +29,9 @@ def parse_args(script):
         
         # For SimCLR
         parser.add_argument('--aug_mode', default='base', help='augmentation for SimCLR training')
-        parser.add_argument('--use_base_classes'   , action='store_true',  help='supervised training with self-training') 
+        parser.add_argument('--use_base_classes'   , action='store_true',  help='supervised training with self-training')
+        parser.add_argument('--no_rerand'   , action='store_true',  help='No re-randomization before SimCLR traininig')
+        parser.add_argument('--no_base_pretraining'   , action='store_true',  help='No use pre-trained model based on base classes')
         
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
