@@ -204,7 +204,7 @@ class TransformLoader:
         elif transform_type == 'RandomGaussianBlur':
             return transforms.RandomApply([transforms.GaussianBlur(kernel_size=(5,5))],p=0.3)
         elif transform_type == 'RandomCrop':
-            return transforms.RandomCrop(self.image_size,padding=4)
+            return transforms.RandomCrop(self.image_size)
         elif transform_type == 'RandomResizedCrop':
             return transforms.RandomResizedCrop(self.image_size)
         elif transform_type == 'CenterCrop':
@@ -231,6 +231,8 @@ class TransformLoader:
                 transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
             elif aug_mode == 'strong':
                 transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
+            elif aug_mode == 'new_medical':
+                transform_list = ['Resize_up', 'RandomCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
             elif aug_mode == 'medical_color':
                 transform_list = ['Resize', 'RandomColorJitter', 'RandomGrayscale', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
             elif aug_mode == 'medical_gray':
