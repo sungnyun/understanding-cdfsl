@@ -224,7 +224,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
     if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
-        df_nil = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
+        df_train = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
     elif params.method in ['maml', 'boil']:
         df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['Accuracy'])
         acc_all = []
@@ -270,10 +270,16 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}.csv'.format(
             dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
         result_path = os.path.join(checkpoint_dir, 'unlabeled', basename)
+        train_basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}_train.csv'.format(
+            dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
+        train_result_path = os.path.join(checkpoint_dir, 'unlabeled', train_basename)
     else:
         basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
             dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
         result_path = os.path.join(checkpoint_dir, basename)
+        train_basename = '{}_{}way{}shot_ft{}_bs{}{}_train.csv'.format(
+            dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
+        train_result_path = os.path.join(checkpoint_dir, train_basename)
     print('Saving results to {}'.format(result_path))
 
     # Determine model weights path
@@ -345,7 +351,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         ###############################################################################################
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             task_all = []
-            task_all_nil = []
+            task_all_train = []
 
         if params.dataset == 'ImageNet':
             try:
@@ -461,6 +467,19 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                         # Evaluation
                         pretrained_model.eval()
                         classifier.eval()
+                        ### Train
+                        y_support = np.repeat(range( n_way ), n_support )
+                        
+                        scores = classifier(pretrained_model.feature(x_a_i.cuda()))
+                        topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
+                        topk_ind = topk_labels.cpu().numpy()
+                        
+                        top1_correct = np.sum(topk_ind[:,0] == y_support)
+                        correct_this, count_this = float(top1_correct), len(y_support)
+                        train_acc = correct_this/count_this*100
+                        task_all_train.append(train_acc)
+                        
+                        ### Test
                         y_query = np.repeat(range( n_way ), n_query )
 
                         scores = classifier(pretrained_model.feature(x_b_i.cuda()))
@@ -469,13 +488,17 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
                         top1_correct = np.sum(topk_ind[:,0] == y_query)
                         correct_this, count_this = float(top1_correct), len(y_query)
-                        task_all.append((correct_this/count_this*100))
-                    print('task: {}, acc: {}'.format(task_num, (correct_this/count_this*100)))
+                        test_acc = correct_this/count_this*100
+                        task_all.append(test_acc)
+                    print('task: {}, train acc: {}, test acc: {}'.format(task_num, train_acc, test_acc))
                 else:
+                    task_all_train.append(0.0)
                     task_all.append(0.0)
 
             df.loc[task_num+1] = task_all
             df.to_csv(result_path)
+            df_train.loc[task_num+1] = task_all_train
+            df_train.to_csv(train_result_path)
 
         elif params.method in ['maml', 'boil']:                
             scores = pretrained_model.set_forward(x)
