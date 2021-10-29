@@ -261,8 +261,8 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         suffixes.append('pr')
     if params.lottery_reinit:
         suffixes.append('lottery')
-    if params.full_supp_stats:
-        suffixes.append('fullStats')
+    if params.unlabeled_stats:
+        suffixes.append('unlabeled_stats')
         
     suffix = '_'.join(suffixes)
     
@@ -303,6 +303,43 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     if params.dataset != 'ImageNet' and not (modelfile and os.path.exists(modelfile)):
         raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
     print('Using model weights path {}'.format(modelfile))
+
+    if params.unlabeled_stats:
+        image_size = 224
+        if dataset_name == "miniImageNet_split":
+            transform = miniImageNet_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = miniImageNet_few_shot.SimpleDataset(
+                transform, train=False, split=True)
+        elif dataset_name == "tieredImageNet_split":
+            image_size = 84
+            transform = tieredImageNet_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = tieredImageNet_few_shot.SimpleDataset(
+                transform, train=False, split=True)
+        elif dataset_name == "CropDisease_split":
+            transform = CropDisease_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = CropDisease_few_shot.SimpleDataset(
+                transform, split=True)
+        elif dataset_name == "EuroSAT_split":
+            transform = EuroSAT_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = EuroSAT_few_shot.SimpleDataset(
+                transform, split=True)
+        elif dataset_name == "ISIC_split":
+            transform = ISIC_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = ISIC_few_shot.SimpleDataset(
+                transform, split=True)
+        elif dataset_name == "ChestX_split":
+            transform = Chest_few_shot.TransformLoader(
+                image_size).get_composed_transform(aug=False)
+            dataset = Chest_few_shot.SimpleDataset(
+                transform, split=True)
+        
+        unlabeled_loader = torch.utils.data.DataLoader(dataset, batch_size=32,
+                                                        num_workers=2, shuffle=True, drop_last=True)
 
     for task_num, (x, y) in tqdm(enumerate(novel_loader)):
         ###############################################################################################
@@ -383,7 +420,6 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         y_a_i = Variable( torch.from_numpy( np.repeat(range( n_way ), n_support ) )).cuda() # (25,)
 
         ###############################################################################################
-
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
             support_size = n_way * n_support
             
@@ -416,17 +452,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
 
                 if (not params.no_tracking) or (epoch+1 == finetune_epoch):
                     with torch.no_grad():
-                        if params.full_supp_stats:
-                            # print ("before")
-                            # pretrained_model.apply(print_momentum)
-                            # pretrained_model.apply(print_BNstats)
+                        if params.unlabeled_stats:
+                            for X, _ in unlabeled_loader:
+                                _ = pretrained_model.feature(X.cuda())
+                            # for _ in range(5):
+                            #     _ = pretrained_model.feature(x_a_i.cuda())
 
-                            pretrained_model.apply(change_momentum)
-                            # print ("after")
-                            # pretrained_model.apply(print_momentum)
-                            _ = pretrained_model.feature(x_a_i)
-                            # pretrained_model.apply(print_BNstats)
-                        
                         # Evaluation
                         pretrained_model.eval()
                         classifier.eval()
@@ -554,7 +585,7 @@ if __name__=='__main__':
         print('Data loader initialized successfully!')
 
         if params.simclr_finetune:
-            for simclr_epoch in [1000, 800, 600, 400, 200, 0]:
+            for simclr_epoch in [1000]:
                 finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
         else:
             finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)

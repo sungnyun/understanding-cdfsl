@@ -41,7 +41,7 @@ def parse_args(script):
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
         parser.add_argument('--partial_reinit', default=None, nargs='+', type=str, help='Re-random layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
         parser.add_argument('--lottery_reinit', default=None, nargs='+', type=str, help='Re-init layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
-        parser.add_argument('--full_supp_stats', action='store_true', help ='Use statistics of full support dataset for BN running stats')
+        parser.add_argument('--unlabeled_stats', action='store_true', help ='Use statistics of unlabeled target dataset for BN running stats')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
         parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')

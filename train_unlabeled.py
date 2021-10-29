@@ -340,7 +340,7 @@ if __name__=='__main__':
                 image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
             dataset = miniImageNet_few_shot.SimpleDataset(
                 apply_twice(transform), train=False, split=True)
-        if dataset_name == "tieredImageNet":
+        elif dataset_name == "tieredImageNet":
             image_size = 84
             transform = tieredImageNet_few_shot.TransformLoader(
                 image_size).get_composed_transform(aug=True, aug_mode=params.aug_mode)
