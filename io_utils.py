@@ -24,7 +24,8 @@ def parse_args(script):
         parser.add_argument('--stop_epoch'  , default=400, type=int, help ='Stopping epoch') # for meta-learning methods, each epoch contains 100 episodes
         
         # For pre-trained model (related to BN)
-        parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats') 
+        parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats')
+        parser.add_argument('--freeze_bn', action='store_true',  help='freeze bn stats, i.e., use accumulated stats of pretrained model during inference. Note, track_bn must be on to do this.')
         parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
         
         # For SimCLR
@@ -36,11 +37,12 @@ def parse_args(script):
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
         parser.add_argument('--simclr_finetune', action='store_true', help ='Fine-tuning using the model trained by SimCLR')
-        # parser.add_argument('--reinit_bn_stats', action='store_true', help ='Re-initialize BN running statistics')
+        parser.add_argument('--simclr_epochs', nargs='+', type=int, default=[1000, 800, 600, 400, 200, 0], help ='Which epochs to fine-tune for SimCLR (near finetune.py:486)')
         parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
-        parser.add_argument('--partial_reinit', default=None, nargs='+', type=str, help='Re-random layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
-        parser.add_argument('--lottery_reinit', default=None, nargs='+', type=str, help='Re-init layers in last block (C0, BN0, C1, BN1, C2, BN2, shortcut, BNshortcut')
+
+        parser.add_argument('--reset_layers', default=None, nargs='+', type=str, help='Re-randomize (or re-init) layers. Refer to `reset_layer.py` for layer names. E.g., 4.c2, 4.b2, 4.cs, 4.bs')
+        parser.add_argument('--reset_layer_method', default='rerandomize', help='rerandomize, reinit')
         parser.add_argument('--unlabeled_stats', action='store_true', help ='Use statistics of unlabeled target dataset for BN running stats')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
@@ -57,8 +59,17 @@ def parse_args(script):
         parser.add_argument('--adaptation'  , action='store_true', help='further adaptation in test time or not')
     else:
         raise ValueError('Unknown script')
-        
-    return parser.parse_args()
+
+    params = parser.parse_args()
+
+    # Double-checking parameters
+    if params.freeze_bn and not params.track_bn:
+        raise AssertionError('Plz check freeze_bn and track_bn arguments.')
+    if params.reinit_bn_stats:
+        raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
+
+    return params
+
 
 def get_init_file(checkpoint_dir):
     init_file = os.path.join(checkpoint_dir, 'initial.tar')

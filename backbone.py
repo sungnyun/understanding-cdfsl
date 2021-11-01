@@ -221,7 +221,8 @@ class ResNet(nn.Module):
             self.trunk[7].BN2.running_var.data.fill_(1.)
             self.trunk[7].BNshortcut.running_mean.data.fill_(0.)
             self.trunk[7].BNshortcut.running_var.data.fill_(1.)
-    
+
+
     def return_features(self, x, return_avg=False):
         flat = Flatten()
         m = nn.AdaptiveAvgPool2d((1,1))
@@ -258,7 +259,7 @@ class ResNet(nn.Module):
         
         return flat(m(out))
 
-def ResNet10(method, track_bn, reinit_bn_stats):
+def ResNet10(method='baseline', track_bn=True, reinit_bn_stats=False):
     return ResNet(method, block=SimpleBlock, list_of_num_layers=[1,1,1,1], list_of_out_dims=[64,128,256,512], flatten=True, track_bn=track_bn, reinit_bn_stats=reinit_bn_stats)
 
 # -*- coding: utf-8 -*-
@@ -356,7 +357,7 @@ class ResNet12(torch.nn.Module):
 
 
 class ResNet18(torchvision.models.resnet.ResNet):
-    def __init__(self, track_bn):
+    def __init__(self, track_bn=True):
         def norm_layer(*args, **kwargs):
             return nn.BatchNorm2d(*args, **kwargs, track_running_stats=track_bn)
         super().__init__(torchvision.models.resnet.BasicBlock, [2, 2, 2, 2], norm_layer=norm_layer)
@@ -536,7 +537,7 @@ class BasicBlock(torch.nn.Module):
 
 
 class ResNet18_84x84(torch.nn.Module):
-    def __init__(self, track_bn, block=BasicBlock, n_blocks=[1,1,2,2], keep_prob=1.0, avg_pool=True, drop_rate=0.1,
+    def __init__(self, track_bn=True, block=BasicBlock, n_blocks=[1,1,2,2], keep_prob=1.0, avg_pool=True, drop_rate=0.1,
                  dropblock_size=5, num_classes=-1, use_se=False):
         super(ResNet18_84x84, self).__init__()
         self.final_feat_dim = 640

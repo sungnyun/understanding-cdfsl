@@ -26,6 +26,7 @@ from methods.boil import BOIL
 from methods.protonet import ProtoNet
 
 from io_utils import parse_args, get_init_file, get_resume_file, get_best_file, get_assigned_file
+from reset_layer import reset_layers
 
 from utils import *
 
@@ -73,12 +74,17 @@ class Classifier(nn.Module):
 
 def reinit_blocks(model, block_indices: List[int]):
     """
-    block_indices should be subset of { 1, 2, 3, 4 }
+    Re-randomize ResNet10 by block.
+
+    Block_indices should be subset of { 1, 2, 3, 4 }
 
     :param model:
     :param block_indices:
     :return:
     """
+    if type(model) != 'ResNet10':
+        raise NotImplementedError('This method works only on ResNet10')
+
     trunk_indices = [i + 3 for i in block_indices]
 
     for name, p in model.named_parameters():
@@ -93,94 +99,6 @@ def reinit_blocks(model, block_indices: List[int]):
                     nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
 
     return model
-
-
-SUPPORTED_LAYERS = ['C0', 'BN0', 'C1', 'BN1', 'C2' , 'BN2', 'shortcut', 'BNshortcut']
-
-
-def convert_layer_names(model_name, layers) -> Dict:
-    """
-    Currently only supports last block
-    :param model_name:
-    :param layers:
-
-    Return example: {
-        'trunk.7.BN1': 'bn',
-        'trunk.7.C1': 'conv',
-    }
-    """
-    targets = dict()
-
-    for layer in layers:
-        if layer not in SUPPORTED_LAYERS:
-            raise ValueError('Unsupported layer name {}'.format(layer))
-
-    for layer in layers:
-        layer_type = 'bn' if 'BN' in layer else 'conv'
-        if model_name == 'ResNet10':
-            if layer in ['C0', 'BN0']:
-                raise ValueError('Unsupported layer name {} for ResNet10'.format(layer))
-            targets['trunk.7.{}'.format(layer)] = layer_type
-        elif model_name == 'ResNet12':
-            targets['group_3.{}'.format(layer)] = layer_type
-        elif model_name == 'ResNet18':
-            if layer in ['C0', 'BN0', 'shortcut', 'BNshortcut']:
-                raise ValueError('Unsupported layer name {} for ResNet18'.format(layer))
-            mapping = {
-                'C1': 'conv1',
-                'BN1': 'bn1',
-                'C2': 'conv2',
-                'BN2': 'bn2',
-                'C3': 'conv3',
-                'BN3': 'bn3'
-            }
-            targets['layer4.1.{}'.format(mapping[layer])] = layer_type
-
-    return targets
-
-
-def partial_reinit(model, model_name, layers, lottery_checkpoint_dir=None, dataset_name=None):
-    """
-    Partially re
-    :param model:
-    :param model_name:
-    :param layers:
-    :param lottery_checkpoint_dir:
-    :return:
-    """
-    lottery_state = None
-    if lottery_checkpoint_dir:
-        assert(dataset_name is not None)
-        if params.simclr_finetune:
-            lottery_model_path = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
-        else:
-            lottery_model_path = get_init_file(checkpoint_dir)
-        if not lottery_model_path or not os.path.exists(lottery_model_path):
-            raise Exception('Invalid model path: "{}" (no such file found)'.format(lottery_model_path))
-        lottery_state = torch.load(lottery_model_path)['state']  # TODO: optimize repeated loads
-
-    targets = convert_layer_names(model_name, layers) # Dict[target_name, layer_type]
-
-    consumed = set()
-    with torch.no_grad():
-        for name, p in model.named_parameters():
-            for target, layer_type in targets.items():
-                if target in name:
-                    if lottery_state:
-                        p.data = lottery_state[name]
-                    else:
-                        if layer_type == 'bn':
-                            if 'weight' in name:
-                                p.data.fill_(1.)
-                            else:
-                                p.data.fill_(0.)
-                        else:
-                            nn.init.kaiming_uniform_(p.data, a=math.sqrt(5))
-                    consumed.add(target)
-
-    remaining = set(targets.keys()) - consumed
-    if remaining:
-        raise AssertionError('Missing layers during partial_reinit: {}'.format(remaining))
 
 
 def mv_init(model):
@@ -217,6 +135,13 @@ def reinit_stem(model):
     return model
 
 
+def toggle_track_bn(model, track: bool):
+    # Has been confirmed that ResNet10, ResNet18, ResNet18_84x84 do not have BN modules that are not 2d
+    for module in model.feature.named_modules():
+        if isinstance(module, nn.BatchNorm2d):
+            module.track_running_stats = track
+
+
 def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
     finetune_epoch = 100
@@ -230,7 +155,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         acc_all = []
 
     reinit_arguments = [
-        bool(params.reinit_blocks), bool(params.partial_reinit), bool(params.lottery_reinit)
+        bool(params.reinit_blocks), bool(params.reset_layers)
     ]
     if sum(reinit_arguments) > 1:
         raise Exception('Cannot apply multiple reinit arguments at the same time')
@@ -241,10 +166,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         print('Re-initializing stem')
     if params.reinit_blocks:
         print('Re-initializing blocks {} (one-index)'.format(params.reinit_blocks))
-    if params.partial_reinit:
-        print('Re-randomizing specific layers from last block (partial reinit)')
-    if params.lottery_reinit:
-        print('Re-initializing specific layers from last block (lottery reinit)')
+    if params.reset_layers:
+        print('Resetting specific layers ({})'.format(params.reset_layer_method))
+        print('-' * 80)
+        for layer in params.reset_layers:
+            print(layer)
+        print('-' * 80)
 
     # [CVPR2022] Build result_path
     suffixes = ['']
@@ -257,13 +184,12 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     if params.reinit_blocks:
         blocks_string = ''.join([str(i) for i in params.reinit_blocks])
         suffixes.append('reinitblock{}'.format(blocks_string))  # changed from LBreinit
-    if params.partial_reinit:
-        suffixes.append('pr')
-    if params.lottery_reinit:
-        suffixes.append('lottery')
+    if params.reset_layers:
+        key = '_'.join(sorted(params.reset_layers))
+        suffixes.append('{}_{}'.format(params.reset_layer_method, key))
     if params.unlabeled_stats:
         suffixes.append('unlabeled_stats')
-        
+
     suffix = '_'.join(suffixes)
     
     if params.simclr_finetune:
@@ -343,9 +269,20 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                 image_size).get_composed_transform(aug=False)
             dataset = Chest_few_shot.SimpleDataset(
                 transform, split=True)
-        
+
         unlabeled_loader = torch.utils.data.DataLoader(dataset, batch_size=32,
-                                                        num_workers=2, shuffle=True, drop_last=True)
+                                                       num_workers=2, shuffle=True, drop_last=True)
+
+    init_state_dict = None
+    if params.reset_layers and params.reset_layer_method == 'reinit':
+        if params.simclr_finetune:
+            init_state_path = os.path.join(checkpoint_dir, 'unlabeled',
+                                           '{}_initial.tar'.format(dataset_name.split('_')[0]))
+        else:
+            init_state_path = get_init_file(checkpoint_dir)
+        if not init_state_path or not os.path.exists(init_state_path):
+            raise Exception('Invalid model path: "{}" (no such file found)'.format(init_state_path))
+        init_state_dict = torch.load(init_state_path)['state']
 
     for task_num, (x, y) in tqdm(enumerate(novel_loader)):
         ###############################################################################################
@@ -353,6 +290,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             task_all = []
             task_all_train = []
 
+        # Get state dict (load from disk)
         if params.dataset == 'ImageNet':
             try:
                 tmp = torch.load(modelfile)
@@ -375,6 +313,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
         #     else:
         #         state[newkey] = state.pop(key)
 
+        # Load state dict (to model)
         if params.dataset == 'ImageNet':
             if state:
                 pretrained_model.load_state_dict(state, strict=True)
@@ -387,7 +326,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
             pretrained_model.load_state_dict(state, strict=True)
         pretrained_model.cuda()
         pretrained_model.train()
-        
+
         ###############################################################################################
 
         if params.method in ['baseline', 'baseline++', 'baseline_body'] + STARTUP_METHODS:
@@ -406,11 +345,10 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                     reinit_running_batch_statistics(pretrained_model, var_init=0.1)
                 if params.reinit_blocks:
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
-                if params.partial_reinit:
-                    partial_reinit(pretrained_model, params.model, params.partial_reinit)
-                if params.lottery_reinit:
-                    partial_reinit(pretrained_model, params.model, params.lottery_reinit, lottery_checkpoint_dir=checkpoint_dir, dataset_name=dataset_name)
-                # TODO [Add] Lottery ticket (?)
+                if params.reset_layers:
+                    # Note, init_state_dict is not-None only if params.reset_layer_method == 'reinit'
+                    reset_layers(pretrained_model, params.reset_layers, init_state_dict=init_state_dict)
+
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
         loss_fn = nn.CrossEntropyLoss().cuda()
@@ -436,6 +374,9 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                 if freeze_backbone:
                     pretrained_model.eval()
 
+                if params.freeze_bn:
+                    toggle_track_bn(pretrained_model, track=False)
+
                 rand_id = np.random.permutation(support_size)
                 for j in range(0, support_size, batch_size):
                     classifier_opt.zero_grad()
@@ -456,6 +397,10 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                     if freeze_backbone is False:
                         delta_opt.step()
 
+                if params.freeze_bn:
+                    toggle_track_bn(pretrained_model, track=True)
+
+                # Evaluation
                 if (not params.no_tracking) or (epoch+1 == finetune_epoch):
                     with torch.no_grad():
                         if params.unlabeled_stats:
@@ -467,18 +412,19 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                         # Evaluation
                         pretrained_model.eval()
                         classifier.eval()
+
                         ### Train
                         y_support = np.repeat(range( n_way ), n_support )
-                        
+
                         scores = classifier(pretrained_model.feature(x_a_i.cuda()))
                         topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
                         topk_ind = topk_labels.cpu().numpy()
-                        
+
                         top1_correct = np.sum(topk_ind[:,0] == y_support)
                         correct_this, count_this = float(top1_correct), len(y_support)
                         train_acc = correct_this/count_this*100
                         task_all_train.append(train_acc)
-                        
+
                         ### Test
                         y_query = np.repeat(range( n_way ), n_query )
 
@@ -608,7 +554,7 @@ if __name__=='__main__':
         print('Data loader initialized successfully!')
 
         if params.simclr_finetune:
-            for simclr_epoch in [1000]:
+            for simclr_epoch in params.simclr_epochs:
                 finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
         else:
             finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
