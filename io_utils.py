@@ -37,6 +37,7 @@ def parse_args(script):
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
         parser.add_argument('--simclr_finetune', action='store_true', help ='Fine-tuning using the model trained by SimCLR')
+        parser.add_argument('--simclr_finetune_source', action='store_true', help ='Fine-tuning using the model trained by source+SimCLR')
         parser.add_argument('--simclr_epochs', nargs='+', type=int, default=[1000, 800, 600, 400, 200, 0], help ='Which epochs to fine-tune for SimCLR (near finetune.py:486)')
         parser.add_argument('--reinit_stem', action='store_true', help ='Re-initialize Stem')
         parser.add_argument('--reinit_blocks', nargs='+', type=int, help ='Re-initialize ResNet blocks (select within range [1, 4])')
@@ -49,7 +50,7 @@ def parse_args(script):
         parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')
 
         # For STARTUP-like split
-        parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP')
+        parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')
     elif script == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want 
         parser.add_argument('--save_iter', default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')

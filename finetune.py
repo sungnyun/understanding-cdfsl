@@ -142,7 +142,7 @@ def toggle_track_bn(model, track: bool):
             module.track_running_stats = track
 
 
-def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
+def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_dir, simclr_epoch=None, freeze_backbone=False, n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
     finetune_epoch = 100
     batch_size = 4
@@ -193,12 +193,15 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     suffix = '_'.join(suffixes)
     
     if params.simclr_finetune:
+        intermediate_dir = 'unlabeled'
+        if params.simclr_finetune_source:
+            intermediate_dir = 'source_and_unlabeled'
         basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}.csv'.format(
             dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
-        result_path = os.path.join(checkpoint_dir, 'unlabeled', basename)
+        result_path = os.path.join(checkpoint_dir, intermediate_dir, basename)
         train_basename = '{}_{}way{}shot_ft{}_bs{}{}_se{}_train.csv'.format(
             dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix, simclr_epoch)
-        train_result_path = os.path.join(checkpoint_dir, 'unlabeled', train_basename)
+        train_result_path = os.path.join(checkpoint_dir, intermediate_dir, train_basename)
     else:
         basename = '{}_{}way{}shot_ft{}_bs{}{}.csv'.format(
             dataset_name, n_way, n_support, finetune_epoch, batch_size, suffix)
@@ -211,12 +214,15 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     # Determine model weights path
     params.save_iter = -1
     if params.simclr_finetune:
+        intermediate_dir = 'unlabeled'
+        if params.simclr_finetune_source:
+            intermediate_dir = 'source_and_unlabeled'
         if simclr_epoch == 0:
-            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_initial.tar'.format(dataset_name.split('_')[0]))
+            modelfile = os.path.join(checkpoint_dir, intermediate_dir, '{}_initial.tar'.format(dataset_name.split('_')[0]))
         elif simclr_epoch == 1000:
-            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_999.tar'.format(dataset_name.split('_')[0]))
+            modelfile = os.path.join(checkpoint_dir, intermediate_dir, '{}_999.tar'.format(dataset_name.split('_')[0]))
         else:
-            modelfile = os.path.join(checkpoint_dir, 'unlabeled', '{}_{}.tar'.format(dataset_name.split('_')[0], simclr_epoch))
+            modelfile = os.path.join(checkpoint_dir, intermediate_dir, '{}_{}.tar'.format(dataset_name.split('_')[0], simclr_epoch))
     else:
         if params.method in STARTUP_METHODS:  # startup methods apply pre-training separately to each target dataset
             if '_split' in dataset_name:  # hotfix -- startup always uses split
@@ -276,7 +282,10 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
     init_state_dict = None
     if params.reset_layers and params.reset_layer_method == 'reinit':
         if params.simclr_finetune:
-            init_state_path = os.path.join(checkpoint_dir, 'unlabeled',
+            intermediate_dir = 'unlabeled'
+            if params.simclr_finetune_source:
+                intermediate_dir = 'source_and_unlabeled'
+            init_state_path = os.path.join(checkpoint_dir, intermediate_dir,
                                            '{}_initial.tar'.format(dataset_name.split('_')[0]))
         else:
             init_state_path = get_init_file(checkpoint_dir)
@@ -347,7 +356,7 @@ def finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir, simcl
                     reinit_blocks(pretrained_model, block_indices=params.reinit_blocks)
                 if params.reset_layers:
                     # Note, init_state_dict is not-None only if params.reset_layer_method == 'reinit'
-                    reset_layers(pretrained_model, params.reset_layers, init_state_dict=init_state_dict)
+                    reset_layers(pretrained_model, params.reset_layers, params.model, init_state_dict=init_state_dict)
 
                 delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001) # 기본코드에는 이거 그냥 1e-2만 있음
 
@@ -555,6 +564,6 @@ if __name__=='__main__':
 
         if params.simclr_finetune:
             for simclr_epoch in params.simclr_epochs:
-                finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
+                finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, simclr_epoch=simclr_epoch, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
         else:
-            finetune(dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
+            finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_dir=checkpoint_dir, freeze_backbone=freeze_backbone, n_query=15, **few_shot_params)
