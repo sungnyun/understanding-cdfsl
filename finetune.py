@@ -436,7 +436,6 @@ def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_di
                         topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
                         topk_ind = topk_labels.cpu().numpy()
                         
-                        topk_ind = np.expand_dims(topk_ind, axis=1)
                         top1_correct = np.sum(topk_ind[:,0] == y_query)
                         correct_this, count_this = float(top1_correct), len(y_query)
                         test_acc = correct_this/count_this*100
