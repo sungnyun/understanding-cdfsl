@@ -50,11 +50,6 @@ def print_momentum(m):
     if isinstance(m, nn.BatchNorm2d):
         print (m.momentum)
 
-def print_BNstats(m):
-    if isinstance(m, nn.BatchNorm2d):
-        print (m.running_mean, m.running_var)
-
-
 class Classifier(nn.Module):
     def __init__(self, dim, n_way):
         super(Classifier, self).__init__()
@@ -417,7 +412,7 @@ def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_di
                                 _ = pretrained_model.feature(X.cuda())
                             # for _ in range(5):
                             #     _ = pretrained_model.feature(x_a_i.cuda())
-
+                        
                         # Evaluation
                         pretrained_model.eval()
                         classifier.eval()
@@ -436,11 +431,12 @@ def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_di
 
                         ### Test
                         y_query = np.repeat(range( n_way ), n_query )
-
+                        
                         scores = classifier(pretrained_model.feature(x_b_i.cuda()))
                         topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
                         topk_ind = topk_labels.cpu().numpy()
-
+                        
+                        topk_ind = np.expand_dims(topk_ind, axis=1)
                         top1_correct = np.sum(topk_ind[:,0] == y_query)
                         correct_this, count_this = float(top1_correct), len(y_query)
                         test_acc = correct_this/count_this*100

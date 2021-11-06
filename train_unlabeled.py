@@ -170,7 +170,7 @@ class NTXentLoss(nn.Module):
         return loss / (2 * self.batch_size)
 
 def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
-                    checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf):
+                    checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf, unlabeled_base_loader):
     
     model.train()
     clf_SIMCLR.train()
@@ -191,7 +191,10 @@ def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
         base_loader_iter = iter(base_loader)
         nll_criterion = nn.NLLLoss(reduction='mean').cuda()
         opt_params.append({'params': clf.parameters()})
-
+        
+    if unlabeled_base_loader is not None:
+        unlabeled_base_loader_iter = iter(unlabeled_base_loader)
+        
     optimizer = torch.optim.SGD(opt_params,
             lr=0.1, momentum=0.9,
             weight_decay=1e-4,
@@ -226,6 +229,18 @@ def train_unlabeled(dataset_name, loader, model, clf_SIMCLR, criterion_SIMCLR,
                 logits_base = clf(features_base)
                 log_probability_base = F.log_softmax(logits_base, dim=1)
                 loss += nll_criterion(log_probability_base, y_base.cuda())
+                
+            if unlabeled_base_loader is not None:
+                try:
+                    X_base, y_base = unlabeled_base_loader_iter.next()
+                except StopIteration:
+                    unlabeled_base_loader_iter = iter(unlabeled_base_loader)
+                    X_base, y_base = unlabeled_base_loader_iter.next()
+
+                f1_base = model.feature(X_base[0].cuda())
+                f2_base = model.feature(X_base[1].cuda())
+                loss += criterion_SIMCLR(clf_SIMCLR(f1_base), clf_SIMCLR(f2_base))
+                print ("hihihi")
 
             optimizer.zero_grad()
             loss.backward()
@@ -330,9 +345,29 @@ if __name__=='__main__':
                 clf = nn.Linear(pretrained_model.feature.final_feat_dim, params.num_classes)
             else:
                 base_loader = None
+                unlabeled_base_loader = None
                 clf = None
+        elif params.use_base_classes_as_unlabeled:
+            print ('Using base classes as unlabeled data!')
+            if pretrained_dataset == 'miniImageNet':
+                transform = miniImageNet_few_shot.TransformLoader(
+                    image_size=224).get_composed_transform(aug=True, aug_mode=params.aug_mode)
+                dataset = miniImageNet_few_shot.SimpleDataset(
+                    apply_twice(transform), train=True)
+                unlabeled_base_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                                                    num_workers=2, shuffle=True, drop_last=True)
+            elif pretrained_dataset == 'tieredImageNet':
+                transform = tieredImageNet_few_shot.TransformLoader(
+                    image_size=84).get_composed_transform(aug=True, aug_mode=params.aug_mode)
+                dataset = tieredImageNet_few_shot.SimpleDataset(
+                    apply_twice(transform), train=True)
+                unlabeled_base_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size,
+                                                                    num_workers=2, shuffle=True, drop_last=True)
+            base_loader = None
+            clf = None
         else:
             base_loader = None
+            unlabeled_base_loader = None
             clf = None
 
         if dataset_name == "miniImageNet":
@@ -377,4 +412,4 @@ if __name__=='__main__':
         print('Data loader initialized successfully!, length: {}'.format(len(dataset)))
 
         train_unlabeled(dataset_name, novel_loader, pretrained_model, clf_SIMCLR, criterion_SIMCLR,
-                        checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf)
+                        checkpoint_dir, start_epoch, stop_epoch, params, base_loader, clf, unlabeled_base_loader)
