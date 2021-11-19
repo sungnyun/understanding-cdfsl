@@ -9,17 +9,23 @@
 # --dataset_names miniImageNet CropDisease EuroSAT ISIC ChestX
 # --no_tracking
 
-shot_lst="1 5"
+python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --train_aug --track_bn \
+    --dataset_names CropDisease --n_shot 1 --no_tracking --simclr_finetune
 
-# ###################### All testset #######################
+
+######## SimCLR ###########
+shot_lst="1 5"
 for s in $shot_lst
-do
-    # Without Re-initialization
-    # miniImageNet
+do   
     python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --train_aug --track_bn \
-     --dataset_names miniImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking
-    python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --train_aug \
-     --dataset_names miniImageNet CropDisease EuroSAT ISIC ChestX --n_shot $s --no_tracking
+     --dataset_names CropDisease --n_shot $s --no_tracking --simclr_finetune
+done
+
+for s in $shot_lst
+do   
+    python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --train_aug --track_bn \
+     --dataset_names ISIC --n_shot $s --no_tracking --simclr_finetune
+done
 
     # tieredImageNet
     python ./finetune.py --dataset tieredImageNet --model ResNet18 --method baseline --track_bn \
