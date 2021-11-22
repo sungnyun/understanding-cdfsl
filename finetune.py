@@ -53,6 +53,7 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
     # Determine model weights path
     if pretrained_dataset == 'none':
         modelfile = None
+        init_state = copy.deepcopy(pretrained_model.feature.state_dict())
         print ('Fine-tuning from scratch')
     else:
         modelfile = get_resume_file(checkpoint_dir)
@@ -83,6 +84,8 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
             #         state[newkey] = state.pop(key)
 
             pretrained_model.feature.load_state_dict(state, strict=True)
+        else:
+            pretrained_model.feature.load_state_dict(init_state, strict=True)
         pretrained_model.cuda()
 
         # Set a new classifier for fine-tuning and optimizers according to the fine-tuning parts and loss function
@@ -173,7 +176,8 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                     correct_this, count_this = float(top1_correct), len(y_query)
                     test_acc = correct_this/count_this*100
                     task_all.append(test_acc)
-                print('task: {}, train acc: {}, test acc: {}'.format(task_num, train_acc, test_acc))
+                if (epoch+1) == finetune_epoch:
+                    print('task: {}, train acc: {}, test acc: {}'.format(task_num, train_acc, test_acc))
             else:
                 task_all_train.append(0.0)
                 task_all.append(0.0)
