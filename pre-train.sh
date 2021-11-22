@@ -1,14 +1,6 @@
 ### Pre-train
-# miniImageNet
-python ./train.py --dataset miniImageNet --model ResNet10 --method baseline --stop_epoch 400 --train_aug --track_bn
-python ./train.py --dataset miniImageNet --model ResNet10 --method baseline --stop_epoch 400 --train_aug
-
-python ./train.py --dataset miniImageNet --model ResNet10 --method baseline_body --stop_epoch 400 --train_aug --track_bn
-python ./train.py --dataset miniImageNet --model ResNet10 --method baseline_body --stop_epoch 400 --train_aug
-
-# tieredImageNet
-python ./train.py --dataset tieredImageNet --model ResNet12 --method baseline --stop_epoch 90 --track_bn
-python ./train.py --dataset tieredImageNet --model ResNet12 --method baseline --stop_epoch 90
-
-python ./train.py --dataset tieredImageNet --model ResNet12 --method baseline_body --stop_epoch 90 --track_bn
-python ./train.py --dataset tieredImageNet --model ResNet12 --method baseline_body --stop_epoch 90
+python ./pretrain.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn --pretrain_type 1 --aug_mode base
+python ./pretrain.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn --pretrain_type 2 --aug_mode base
+python ./pretrain.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn --pretrain_type 3 --dataset_names CropDisease --aug_mode base
+python ./pretrain.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn --pretrain_type 4 --dataset_names CropDisease --aug_mode base
+python ./pretrain.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn --pretrain_type 5 --dataset_names CropDisease --aug_mode base

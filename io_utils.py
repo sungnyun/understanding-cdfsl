@@ -20,6 +20,7 @@ def parse_args(script):
     if script == 'train':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class
         parser.add_argument('--save_freq'   , default=50, type=int, help='Save frequency')
+        parser.add_argument('--pretrain_type', default=None, type=int, help='How to pre-train')
         parser.add_argument('--start_epoch' , default=0, type=int,help ='Starting epoch')
         parser.add_argument('--stop_epoch'  , default=400, type=int, help ='Stopping epoch') # for meta-learning methods, each epoch contains 100 episodes
         
@@ -29,7 +30,7 @@ def parse_args(script):
         parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
         
         # For SimCLR
-        parser.add_argument('--aug_mode', default='base', help='augmentation for SimCLR training')
+        parser.add_argument('--aug_mode', default=None, help='augmentation for pre-training [base, strong]')
         parser.add_argument('--use_base_classes'   , action='store_true',  help='supervised training using base classes with self-training')
         parser.add_argument('--use_base_classes_as_unlabeled'   , action='store_true',  help='unsupervised training using base classes with self-training')
         parser.add_argument('--no_rerand'   , action='store_true',  help='No re-randomization before SimCLR traininig')

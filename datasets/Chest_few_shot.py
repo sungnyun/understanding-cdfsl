@@ -231,12 +231,6 @@ class TransformLoader:
                 transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
             elif aug_mode == 'strong':
                 transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
-            elif aug_mode == 'new_medical':
-                transform_list = ['Resize_up', 'RandomCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
-            elif aug_mode == 'medical_color':
-                transform_list = ['Resize', 'RandomColorJitter', 'RandomGrayscale', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
-            elif aug_mode == 'medical_gray':
-                transform_list = ['Resize', 'RandomRotation', 'RandomHorizontalFlip', 'ToTensor', 'Normalize']
         else:
             transform_list = ['Resize', 'ToTensor', 'Normalize']
 

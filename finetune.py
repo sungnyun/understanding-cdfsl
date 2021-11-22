@@ -176,7 +176,7 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                     correct_this, count_this = float(top1_correct), len(y_query)
                     test_acc = correct_this/count_this*100
                     task_all.append(test_acc)
-                if (epoch+1) == finetune_epoch:
+                if (epoch+1 == finetune_epoch):
                     print('task: {}, train acc: {}, test acc: {}'.format(task_num, train_acc, test_acc))
             else:
                 task_all_train.append(0.0)
