@@ -186,7 +186,7 @@ def set_unlabeled_target_loader(dataset_name, aug_mode):
     unlabeled_target_loader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=True, drop_last=True)
     return unlabeled_target_loader
 
-def train_unlabeled(model, checkpoint_dir, dataset_name=None,
+def train_unlabeled(model, checkpoint_dir, pretrain_type, dataset_name=None,
                     labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=None):
     
     if unlabeled_source_loader is None and unlabeled_target_loader is None:
@@ -225,9 +225,20 @@ def train_unlabeled(model, checkpoint_dir, dataset_name=None,
             nll_criterion = nn.NLLLoss(reduction='mean').cuda()
             opt_params.append({'params': clf.parameters()})
         elif unlabeled_source_loader is not None: # For pre-training type 5
-            print ("Pre-training type: 5")
+            if pretrain_type == 5:
+                print ("Pre-training type: 5")
+            elif pretrain_type == 6:
+                print ("Pre-training type: 6")
             unlabeled_source_loader_iter = iter(unlabeled_source_loader)
-        
+    
+    if pretrain_type == 6:
+        binary_clf = nn.Linear(model.feature.final_feat_dim, 2)
+        binary_clf.train()
+        binary_clf.cuda()
+
+        binary_criterion = nn.CrossEntropyLoss().cuda()
+        opt_params.append({'params': binary_clf.parameters()})
+
     optimizer = torch.optim.SGD(opt_params,
             lr=0.1, momentum=0.9,
             weight_decay=1e-4,
@@ -274,6 +285,13 @@ def train_unlabeled(model, checkpoint_dir, dataset_name=None,
                 f2 = model.feature(X[1].cuda())
                 loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
 
+                if pretrain_type == 6:
+                    f1_binary_disc = binary_clf(f1)
+                    f2_binary_disc = binary_clf(f2)
+                    binary_target = torch.ones(f1_binary_disc.size(0), dtype=torch.long)
+                    loss += (0.5 * binary_criterion(f1_binary_disc, binary_target.cuda()) \
+                        + 0.5 * binary_criterion(f2_binary_disc, binary_target.cuda()))
+
                 if labeled_source_loader is not None: # For pre-training 4
                     try:
                         X_base, y_base = labeled_source_loader_iter.next()
@@ -296,6 +314,13 @@ def train_unlabeled(model, checkpoint_dir, dataset_name=None,
                     f1_base = model.feature(X_base[0].cuda())
                     f2_base = model.feature(X_base[1].cuda())
                     loss += criterion_SIMCLR(clf_SIMCLR(f1_base), clf_SIMCLR(f2_base))
+
+                    if pretrain_type == 6:
+                        f1_base_binary_disc = binary_clf(f1_base)
+                        f2_base_binary_disc = binary_clf(f2_base)
+                        binary_source = torch.zeros(f1_base_binary_disc.size(0), dtype=torch.long)
+                        loss += (0.5 * binary_criterion(f1_base_binary_disc, binary_source.cuda()) \
+                            + 0.5 * binary_criterion(f2_base_binary_disc, binary_source.cuda()))
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -359,7 +384,7 @@ if __name__=='__main__':
     elif params.pretrain_type == 2: # Pretrained on unlabeled source data (SimCLR (base))
         unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode)
         print('Data loader initialized successfully! unlabeled source {}'.format(params.dataset))
-        train_unlabeled(model, checkpoint_dir, dataset_name=None,
+        train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
                         labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=None)
 
     elif params.pretrain_type == 3: # Pretrained on unlabeled target data (SimCLR)
@@ -367,7 +392,7 @@ if __name__=='__main__':
         for dataset_name in dataset_names:
             unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
             print('Data loader initialized successfully! unlabeled target {}'.format(dataset_name))
-            train_unlabeled(model, checkpoint_dir, dataset_name=dataset_name,
+            train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                             labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
     elif params.pretrain_type == 4: # Pretrained on labeled source data + unlabeled target data
@@ -376,20 +401,20 @@ if __name__=='__main__':
         for dataset_name in dataset_names:
             unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
             print('Data loader initialized successfully! unlabeled target {} with labeled {}'.format(dataset_name, params.dataset))
-            train_unlabeled(model, checkpoint_dir, dataset_name=dataset_name,
+            train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                             labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type == 5: # Pretrained on unlabeled source data + unlabeled target data
+    elif params.pretrain_type == 5 or params.pretrain_type == 6: # Pretrained on unlabeled source data + unlabeled target data (++ discriminator)
         unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
             unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
             print('Data loader initialized successfully! unlabeled target {} with unlabeled {}'.format(dataset_name, params.dataset))
-            train_unlabeled(model, checkpoint_dir, dataset_name=dataset_name,
+            train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                             labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type == 6: # Pretrained on labeled source data -> unlabeled target (Transfer+SimCLR) (Based on type 1)
+    elif params.pretrain_type == 7: # Pretrained on labeled source data -> unlabeled target (Transfer+SimCLR) (Based on type 1)
         pass
 
-    elif params.pretrain_type == 7: # Pretrained on unlabeled source data -> unlabeled target (Based on type 2)
+    elif params.pretrain_type == 8: # Pretrained on unlabeled source data -> unlabeled target (Based on type 2)
         pass
