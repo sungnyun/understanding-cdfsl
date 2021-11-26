@@ -196,7 +196,10 @@ def train_unlabeled(model, checkpoint_dir, pretrain_type, dataset_name=None,
     stop_epoch = 1000
         
     clf_SIMCLR = projector_SIMCLR(model.feature.final_feat_dim, out_dim=128) # Projection dimension is fixed to 128
-    criterion_SIMCLR = NTXentLoss('cuda', batch_size=32, temperature=1, use_cosine_similarity=True)
+    if pretrain_type in [7, 8]:
+        criterion_SIMCLR = NTXentLoss('cuda', batch_size=64, temperature=1, use_cosine_similarity=True)
+    else:
+        criterion_SIMCLR = NTXentLoss('cuda', batch_size=32, temperature=1, use_cosine_similarity=True)
 
     model.train()
     clf_SIMCLR.train()
@@ -229,9 +232,13 @@ def train_unlabeled(model, checkpoint_dir, pretrain_type, dataset_name=None,
                 print ("Pre-training type: 5")
             elif pretrain_type == 6:
                 print ("Pre-training type: 6")
+            elif pretrain_type == 7:
+                print ("Pre-training type: 7")
+            elif pretrain_type == 8:
+                print ("Pre-training type: 8")
             unlabeled_source_loader_iter = iter(unlabeled_source_loader)
     
-    if pretrain_type == 6:
+    if pretrain_type in [6, 8]:
         binary_clf = nn.Linear(model.feature.final_feat_dim, 2)
         binary_clf.train()
         binary_clf.cuda()
@@ -283,9 +290,12 @@ def train_unlabeled(model, checkpoint_dir, pretrain_type, dataset_name=None,
             for i, (X, y) in enumerate(unlabeled_target_loader): # For pre-training 3, 4, 5
                 f1 = model.feature(X[0].cuda())
                 f2 = model.feature(X[1].cuda())
-                loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
+                if pretrain_type not in [7, 8]:
+                    loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
+                else:
+                    loss = 0.
 
-                if pretrain_type == 6:
+                if pretrain_type in [6, 8]:
                     f1_binary_disc = binary_clf(f1)
                     f2_binary_disc = binary_clf(f2)
                     binary_target = torch.ones(f1_binary_disc.size(0), dtype=torch.long)
@@ -313,9 +323,13 @@ def train_unlabeled(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
                     f1_base = model.feature(X_base[0].cuda())
                     f2_base = model.feature(X_base[1].cuda())
-                    loss += criterion_SIMCLR(clf_SIMCLR(f1_base), clf_SIMCLR(f2_base))
-
-                    if pretrain_type == 6:
+                    if pretrain_type not in [7, 8]:
+                        loss += criterion_SIMCLR(clf_SIMCLR(f1_base), clf_SIMCLR(f2_base))
+                    else:
+                        loss += criterion_SIMCLR(clf_SIMCLR(torch.cat([f1, f1_base])),
+                                                 clf_SIMCLR(torch.cat([f2, f2_base])))
+                                                            
+                    if pretrain_type in [6, 8]:
                         f1_base_binary_disc = binary_clf(f1_base)
                         f2_base_binary_disc = binary_clf(f2_base)
                         binary_source = torch.zeros(f1_base_binary_disc.size(0), dtype=torch.long)
@@ -404,7 +418,7 @@ if __name__=='__main__':
             train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                             labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type == 5 or params.pretrain_type == 6: # Pretrained on unlabeled source data + unlabeled target data (++ discriminator)
+    elif params.pretrain_type in [5, 6, 7, 8]: # Pretrained on unlabeled source data + unlabeled target data (++ discriminator)
         unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
@@ -413,8 +427,8 @@ if __name__=='__main__':
             train_unlabeled(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                             labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type == 7: # Pretrained on labeled source data -> unlabeled target (Transfer+SimCLR) (Based on type 1)
+    elif params.pretrain_type == 9: # Pretrained on labeled source data -> unlabeled target (Transfer+SimCLR) (Based on type 1)
         pass
 
-    elif params.pretrain_type == 8: # Pretrained on unlabeled source data -> unlabeled target (Based on type 2)
+    elif params.pretrain_type == 10: # Pretrained on unlabeled source data -> unlabeled target (Based on type 2)
         pass
