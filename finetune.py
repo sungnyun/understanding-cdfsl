@@ -56,7 +56,10 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
         init_state = copy.deepcopy(pretrained_model.feature.state_dict())
         print ('Fine-tuning from scratch')
     else:
-        modelfile = get_resume_file(checkpoint_dir)
+        if params.pretrain_type == 1 or params.pretrain_type == 2:
+            modelfile = get_resume_file(checkpoint_dir)
+        else:
+            modelfile = get_resume_file(checkpoint_dir, dataset_name)
         if not os.path.exists(modelfile):
             raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
         print ('Fine-tuning from the pre-trained model')
@@ -75,13 +78,13 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
             tmp = torch.load(modelfile)
             state = tmp['state']
 
-            # state_keys = list(state.keys())
-            # for _, key in enumerate(state_keys):
-            #     if "feature." in key:
-            #         newkey = key.replace("feature.","")  # an architecture model has attribute 'feature', load architecture feature to backbone by casting name from 'feature.trunk.xx' to 'trunk.xx'  
-            #         state[newkey] = state.pop(key)
-            #     else:
-            #         state[newkey] = state.pop(key)
+            state_keys = list(state.keys())
+            for _, key in enumerate(state_keys):
+                if "feature." in key:
+                    newkey = key.replace("feature.","")  # an architecture model has attribute 'feature', load architecture feature to backbone by casting name from 'feature.trunk.xx' to 'trunk.xx'  
+                    state[newkey] = state.pop(key)
+                else:
+                    state[newkey] = state.pop(key)
 
             pretrained_model.feature.load_state_dict(state, strict=True)
         else:
@@ -220,9 +223,7 @@ if __name__=='__main__':
     else:
         raise ValueError('Invalid `method` argument: {}'.format(params.method))
 
-    checkpoint_dir = '%s/checkpoints/%s/%s_%s' %(configs.save_dir, pretrained_dataset, params.model, params.method)
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
+    checkpoint_dir = '%s/checkpoints/%s/%s_%s/type%s_%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type), params.aug_mode)
     ##################################################################
     image_size = 224  # for every evaluation dataset except tieredImageNet
     iter_num = 600
