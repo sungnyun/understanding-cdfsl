@@ -26,37 +26,49 @@ python ./finetune.py --dataset none --model ResNet10 --method baseline --track_b
 
 ##### Fine-tuning from pre-trained models #####
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts head --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts head --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts body --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts body --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts full --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts full --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts head --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts head --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts body --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts body --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode base --finetune_parts full --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode base --finetune_parts full --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts head --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts head --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts body --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts body --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts full --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 1 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts full --n_shot 1 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts head --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts head --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts body --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts body --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
 
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---pretrain_type 1 --aug_mode strong --finetune_parts full --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5 --no_tracking
+--pretrain_type 1 --aug_mode strong --finetune_parts full --n_shot 5 \
+--dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
