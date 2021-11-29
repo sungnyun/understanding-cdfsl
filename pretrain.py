@@ -114,28 +114,28 @@ class NTXentLoss(nn.Module):
 
         return loss / (2 * self.batch_size)
 
-def set_labeled_source_loader(dataset_name, aug_mode):
+def set_labeled_source_loader(dataset_name, aug_mode, batch_size):
     if dataset_name == 'miniImageNet':
         transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
         dataset = miniImageNet_few_shot.SimpleDataset(transform, train=True)
-        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=True, drop_last=False) # batch size is originally 16
+        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False) # batch size is originally 16
     elif dataset_name == 'tieredImageNet':
         transform = tieredImageNet_few_shot.TransformLoader(image_size=84).get_composed_transform(aug=False) # Do no augmentation for tieredImageNet to be consisitent with the literature
         dataset = tieredImageNet_few_shot.SimpleDataset(transform, train=True)
-        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=256, num_workers=2, shuffle=True, drop_last=False)
+        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False)
     return labeled_source_loader
 
-def set_unlabeled_source_loader(dataset_name, aug_mode):
+def set_unlabeled_source_loader(dataset_name, aug_mode, batch_size):
     if dataset_name == 'miniImageNet':
         transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
         dataset = miniImageNet_few_shot.SimpleDataset(apply_twice(transform), train=True)
     elif dataset_name == 'tieredImageNet':
         transform = tieredImageNet_few_shot.TransformLoader(image_size=84).get_composed_transform(aug=True, aug_mode=aug_mode)
         dataset = tieredImageNet_few_shot.SimpleDataset(apply_twice(transform), train=True)
-    unlabeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=True, drop_last=True)
+    unlabeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=True)
     return unlabeled_source_loader
 
-def set_unlabeled_target_loader(dataset_name, aug_mode):
+def set_unlabeled_target_loader(dataset_name, aug_mode, batch_size):
     if dataset_name == 'miniImageNet':
         transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
         dataset = miniImageNet_few_shot.SimpleDataset(apply_twice(transform), train=False, split=True)
@@ -154,7 +154,7 @@ def set_unlabeled_target_loader(dataset_name, aug_mode):
     elif dataset_name == 'ChestX':
         transform = Chest_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
         dataset = Chest_few_shot.SimpleDataset(apply_twice(transform), split=True)
-    unlabeled_target_loader = torch.utils.data.DataLoader(dataset, batch_size=32, num_workers=2, shuffle=True, drop_last=True)
+    unlabeled_target_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=True)
     return unlabeled_target_loader
 
 def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
@@ -173,11 +173,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
     if pretrain_type != 1:
         clf_SIMCLR = projector_SIMCLR(model.feature.final_feat_dim, out_dim=128) # Projection dimension is fixed to 128
-
-        if pretrain_type in [5, 6]:
-            criterion_SIMCLR = NTXentLoss('cuda', batch_size=64, temperature=1, use_cosine_similarity=True)
-        else:
-            criterion_SIMCLR = NTXentLoss('cuda', batch_size=32, temperature=1, use_cosine_similarity=True)
+        criterion_SIMCLR = NTXentLoss('cuda', batch_size=64, temperature=1, use_cosine_similarity=True)
 
         clf_SIMCLR.train()
         clf_SIMCLR.cuda()
@@ -364,13 +360,13 @@ if __name__=='__main__':
         os.makedirs(checkpoint_dir)
     ##################################################################
     if params.pretrain_type == 1: # Pretrained on labeled source data (Transfer)
-        labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode)
+        labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
         print('Data loader initialized successfully! labeled source {}'.format(params.dataset))
         train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
                 labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=None)
 
     elif params.pretrain_type == 2: # Pretrained on unlabeled source data (SimCLR (base))
-        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode)
+        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
         print('Data loader initialized successfully! unlabeled source {}'.format(params.dataset))
         train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
              labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=None)
@@ -378,25 +374,25 @@ if __name__=='__main__':
     elif params.pretrain_type == 3: # Pretrained on unlabeled target data (SimCLR)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
+            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=64)
             print('Data loader initialized successfully! unlabeled target {}'.format(dataset_name))
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
     elif params.pretrain_type == 4: # Pretrained on labeled source data + unlabeled target data
-        labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode)
+        labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
+            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=64)
             print('Data loader initialized successfully! unlabeled target {} with labeled {}'.format(dataset_name, params.dataset))
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
     elif params.pretrain_type in [5, 6]: # Pretrained on unlabeled source data + unlabeled target data (++ discriminator)
-        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode)
+        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode, batch_size=32)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode)
+            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=32)
             print('Data loader initialized successfully! unlabeled target {} with unlabeled {}'.format(dataset_name, params.dataset))
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=unlabeled_target_loader)
