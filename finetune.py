@@ -157,9 +157,18 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
         for epoch in range(finetune_epoch):
             pretrained_model.train()
             classifier.train()
-            
-            if finetune_parts == 'head':
-                pretrained_model.eval()
+            if use_simclr_clf:
+                clf_SIMCLR.train()
+                
+            if use_simclr_clf:
+                if finetune_parts == 'head':
+                    pretrained_model.eval()
+                    clf_SIMCLR.eval()
+                elif finetune_parts == 'simclr_head':
+                    pretrained_model.eval()
+            else:
+                if finetune_parts == 'head':
+                    pretrained_model.eval()
 
             # Fine-tuning
             rand_id = np.random.permutation(support_size)
@@ -201,6 +210,8 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                 with torch.no_grad():
                     pretrained_model.eval()
                     classifier.eval()
+                    if use_simclr_clf:
+                        clf_SIMCLR.eval()
 
                     ### Train
                     y_support = np.repeat(range( n_way ), n_support )
