@@ -166,7 +166,25 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
     start_epoch = 0
     stop_epoch = 1000
     freq_epoch = 100
-    
+
+    if pretrain_type in [6, 7, 8]:
+        first_pretrained_model_dir = '%s/checkpoints/miniImageNet/ResNet10_baseline/type1_strong' %(configs.save_dir)
+        modelfile = get_resume_file(first_pretrained_model_dir)
+        if not os.path.exists(modelfile):
+            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
+        print ('Pre-training from the model weights path {}'.format(modelfile))
+
+        tmp = torch.load(modelfile)
+        state = tmp['state']
+        state_keys = list(state.keys())
+        for _, key in enumerate(state_keys):
+            if "feature." in key:
+                newkey = key.replace("feature.","")  # an architecture model has attribute 'feature', load architecture feature to backbone by casting name from 'feature.trunk.xx' to 'trunk.xx'  
+                state[newkey] = state.pop(key)
+            else:
+                state[newkey] = state.pop(key)
+        model.feature.load_state_dict(state, strict=True)
+
     model.train()
     model.cuda()
     opt_params = [{'params': model.parameters()}]
@@ -187,16 +205,6 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
     if pretrain_type != 2 and unlabeled_source_loader is not None:
         unlabeled_source_loader_iter = iter(unlabeled_source_loader)
     
-    """
-    if pretrain_type == 11:
-        binary_clf = nn.Linear(model.feature.final_feat_dim, 2)
-        binary_clf.train()
-        binary_clf.cuda()
-
-        binary_criterion = nn.CrossEntropyLoss().cuda()
-        opt_params.append({'params': binary_clf.parameters()})
-    """
-
     optimizer = torch.optim.SGD(opt_params,
             lr=0.1, momentum=0.9,
             weight_decay=1e-4,
@@ -253,18 +261,16 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
             epoch_loss = 0
             if epoch == 0:
                 outfile = os.path.join(checkpoint_dir, '{}_initial.tar'.format(dataset_name))
-                if pretrain_type == 11:
-                    torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict(), 'binary':binary_clf.state_dict()}, outfile)
-                else:
-                    torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
 
             for i, (X, y) in enumerate(unlabeled_target_loader):
                 f1 = model.feature(X[0].cuda())
                 f2 = model.feature(X[1].cuda())
-                if pretrain_type == 3:
+
+                if labeled_source_loader is None and unlabeled_source_loader is None: # For pre-training 3, 6
                     loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
 
-                if labeled_source_loader is not None: # For pre-training 4
+                elif labeled_source_loader is not None: # For pre-training 4, 7
                     try:
                         X_base, y_base = labeled_source_loader_iter.next()
                     except StopIteration:
@@ -278,7 +284,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                     gamma = 0.50
                     loss = gamma * criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2)) + (1-gamma) * nll_criterion(log_probability_base, y_base.cuda())
                     
-                if unlabeled_source_loader is not None: # For pre-training 5, 6
+                elif unlabeled_source_loader is not None: # For pre-training 5, 8
                     try:
                         X_base, y_base = unlabeled_source_loader_iter.next()
                     except StopIteration:
@@ -290,20 +296,8 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                     loss = criterion_SIMCLR(clf_SIMCLR(torch.cat([f1, f1_base])),
                                             clf_SIMCLR(torch.cat([f2, f2_base])))
                 
-                """
-                if pretrain_type == 11:
-                    f1_binary_disc = binary_clf(f1)
-                    f2_binary_disc = binary_clf(f2)
-                    binary_target = torch.ones(f1_binary_disc.size(0), dtype=torch.long)
-                    loss += (0.5 * binary_criterion(f1_binary_disc, binary_target.cuda()) \
-                        + 0.5 * binary_criterion(f2_binary_disc, binary_target.cuda()))
-                        
-                    f1_base_binary_disc = binary_clf(f1_base)
-                    f2_base_binary_disc = binary_clf(f2_base)
-                    binary_source = torch.zeros(f1_base_binary_disc.size(0), dtype=torch.long)
-                    loss += (0.5 * binary_criterion(f1_base_binary_disc, binary_source.cuda()) \
-                        + 0.5 * binary_criterion(f2_base_binary_disc, binary_source.cuda()))
-                """
+                else:
+                    raise Exception('Invalid loader settings')
 
                 optimizer.zero_grad()
                 loss.backward()
@@ -315,10 +309,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
             if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
                 outfile = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, epoch))
-                if pretrain_type == 11:
-                    torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict(), 'binary':binary_clf.state_dict()}, outfile)
-                else:
-                    torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
 
 if __name__=='__main__':
     np.random.seed(10)
@@ -358,6 +349,7 @@ if __name__=='__main__':
         checkpoint_dir = '%s/checkpoints/%s/%s_%s/type%s_%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type), params.aug_mode)
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
+    
     ##################################################################
     if params.pretrain_type == 1: # Pretrained on labeled source data (Transfer)
         labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
@@ -371,7 +363,8 @@ if __name__=='__main__':
         train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
              labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=None)
 
-    elif params.pretrain_type == 3: # Pretrained on unlabeled target data (SimCLR)
+    elif params.pretrain_type in [3, 6]: # 3: Pretrained on unlabeled target data (SimCLR)
+                                         # 6: Pretrained on labeled source data -> unlabeled target data (Transfer+SimCLR) (Pre-trained by type 1 and then type 3)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
             unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=64)
@@ -379,7 +372,8 @@ if __name__=='__main__':
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type == 4: # Pretrained on labeled source data + unlabeled target data
+    elif params.pretrain_type in [4, 7]: # 4: Pretrained on labeled source data + unlabeled target data
+                                         # 7: Pretrained on labeled source data -> labeled source data + unlabeled target data (Pre-trained by type 1 and then type 4)
         labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
@@ -388,7 +382,8 @@ if __name__=='__main__':
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
 
-    elif params.pretrain_type in [5, 6]: # Pretrained on unlabeled source data + unlabeled target data (++ discriminator)
+    elif params.pretrain_type in [5, 8]: # 5: Pretrained on unlabeled source data + unlabeled target data
+                                         # 8: Pretrained on labeled source data -> unlabeled source data + unlabeled target data (Pre-trained by type 1 and then type 5)
         unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode, batch_size=32)
         dataset_names = params.dataset_names
         for dataset_name in dataset_names:
@@ -396,12 +391,3 @@ if __name__=='__main__':
             print('Data loader initialized successfully! unlabeled target {} with unlabeled {}'.format(dataset_name, params.dataset))
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
                   labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=unlabeled_target_loader)
-
-    elif params.pretrain_type == 7: # Pretrained on labeled source data -> unlabeled target data (Transfer+SimCLR) (Pre-trained by type 1 and then type 3)
-        pass
-
-    elif params.pretrain_type == 8: # Pretrained on labeled source data -> labeled source data + unlabeled target data (Pre-trained by type 1 and then type 4)
-        pass
-
-    elif params.pretrain_type == [9, 10]: # Pretrained on labeled source data -> unlabeled source data + unlabeled target data (Pre-trained by type 1 and then type 5)
-        pass

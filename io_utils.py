@@ -52,6 +52,7 @@ def parse_args(script):
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
         parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')
+        parser.add_argument('--use_simclr_clf', action='store_true', help ='Use pre-trained SimCLR projection head')
 
         # For STARTUP-like split
         parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')

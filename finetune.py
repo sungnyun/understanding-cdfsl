@@ -35,7 +35,23 @@ class Classifier(nn.Module):
         x = self.fc(x)
         return x
 
-def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir,
+class projector_SIMCLR(nn.Module):
+    '''
+        The projector for SimCLR. This is added on top of a backbone for SimCLR Training
+    '''
+    def __init__(self, in_dim, out_dim):
+        super(projector_SIMCLR, self).__init__()
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+
+        self.fc1 = nn.Linear(in_dim, in_dim)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(in_dim, out_dim)
+
+    def forward(self, x):
+        return self.fc2(self.relu(self.fc1(x)))
+
+def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir, use_simclr_clf,
             finetune_epoch=100, batch_size=4, finetune_parts='head', n_query=15, n_way=5, n_support=5):
     iter_num = len(novel_loader)
 
@@ -65,8 +81,6 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
         print ('Fine-tuning from the pre-trained model')
         print ('Using model weights path {}'.format(modelfile))
 
-    ##### TODO: finetune using unlabeled target data together #####
-
     ##### Fine-tuning and Evaluation #####
     print ('Fine-tuning start! Fine-tuned part is {}.'.format(finetune_parts))
     for task_num, (x, y) in tqdm(enumerate(novel_loader)):
@@ -85,29 +99,46 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                     state[newkey] = state.pop(key)
                 else:
                     state[newkey] = state.pop(key)
-
             pretrained_model.feature.load_state_dict(state, strict=True)
+            if use_simclr_clf:
+                clf_SIMCLR = projector_SIMCLR(pretrained_model.feature.final_feat_dim, out_dim=128)
+                state = tmp['simCLR']
+                clf_SIMCLR.load_state_dict(state, strict=True)
+                clf_SIMCLR.cuda()
         else:
             pretrained_model.feature.load_state_dict(init_state, strict=True)
         pretrained_model.cuda()
 
         # Set a new classifier for fine-tuning and optimizers according to the fine-tuning parts and loss function
         if params.method in ['baseline', 'baseline++']:
-            classifier = Classifier(pretrained_model.feature.final_feat_dim, n_way)
+            if use_simclr_clf:
+                classifier = Classifier(128, n_way)
+            else:
+                classifier = Classifier(pretrained_model.feature.final_feat_dim, n_way)
             classifier.cuda()
 
-            if finetune_parts == 'head':
-                classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 0)
-            elif finetune_parts == 'body':
-                classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 0, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2)
-            elif finetune_parts == 'full':
-                classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                delta_opt = torch.optim.SGD(filter(lambda p: p.requires_grad, pretrained_model.parameters()), lr = 1e-2)
+            if use_simclr_clf:
+                if finetune_parts == 'head':
+                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 0)
+                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
+                if finetune_parts == 'simclr_head':
+                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
+                if finetune_parts == 'full':
+                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 1e-2)
             else:
-                raise ValueError('Invalid `finetune_parts` argument: {}'.format(finetune_parts))
-
+                if finetune_parts == 'head':
+                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
+                elif finetune_parts == 'full':
+                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 1e-2)
+                else:
+                    raise ValueError('Invalid `finetune_parts` argument: {}'.format(finetune_parts))
 
         loss_fn = nn.CrossEntropyLoss().cuda()
 
@@ -138,17 +169,32 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                 x_batch = x_a_i[selected_id]
                 y_batch = y_a_i[selected_id]
                 
-                output = pretrained_model.feature(x_batch)
-                scores = classifier(output)
-                loss = loss_fn(scores, y_batch)
-                
-                classifier_opt.zero_grad()
-                delta_opt.zero_grad()
+                if use_simclr_clf:
+                    output = pretrained_model.feature(x_batch)
+                    scores = classifier(clf_SIMCLR(output))
+                    loss = loss_fn(scores, y_batch)
+                    
+                    classifier_opt.zero_grad()
+                    clf_SIMCLR_opt.zero_grad()
+                    delta_opt.zero_grad()
 
-                loss.backward()
+                    loss.backward()
 
-                classifier_opt.step()
-                delta_opt.step()
+                    classifier_opt.step()
+                    clf_SIMCLR_opt.step()
+                    delta_opt.step()
+                else:
+                    output = pretrained_model.feature(x_batch)
+                    scores = classifier(output)
+                    loss = loss_fn(scores, y_batch)
+                    
+                    classifier_opt.zero_grad()
+                    delta_opt.zero_grad()
+
+                    loss.backward()
+
+                    classifier_opt.step()
+                    delta_opt.step()
 
             # Evaluation
             if (not params.no_tracking) or (epoch+1 == finetune_epoch):
@@ -159,7 +205,10 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                     ### Train
                     y_support = np.repeat(range( n_way ), n_support )
 
-                    scores = classifier(pretrained_model.feature(x_a_i.cuda()))
+                    if use_simclr_clf:
+                        scores = classifier(clf_SIMCLR(pretrained_model.feature(x_a_i.cuda())))
+                    else:
+                        scores = classifier(pretrained_model.feature(x_a_i.cuda()))
                     topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
                     topk_ind = topk_labels.cpu().numpy()
 
@@ -171,7 +220,10 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
                     ### Test
                     y_query = np.repeat(range( n_way ), n_query )
                     
-                    scores = classifier(pretrained_model.feature(x_b_i.cuda()))
+                    if use_simclr_clf:
+                        scores = classifier(clf_SIMCLR(pretrained_model.feature(x_b_i.cuda())))
+                    else:
+                        scores = classifier(pretrained_model.feature(x_b_i.cuda()))
                     topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
                     topk_ind = topk_labels.cpu().numpy()
                     
@@ -232,6 +284,7 @@ if __name__=='__main__':
     finetune_parts = params.finetune_parts # 'head', 'body', 'full'
     dataset_names = params.dataset_names
     split = params.startup_split
+    use_simclr_clf = params.use_simclr_clf
     
     for dataset_name in dataset_names:
         print (dataset_name)
@@ -256,5 +309,5 @@ if __name__=='__main__':
             novel_loader = datamgr.get_data_loader(aug=False)
         print('Data loader initialized successfully!')
 
-        finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir=checkpoint_dir,
+        finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir=checkpoint_dir, use_simclr_clf=use_simclr_clf,
                 finetune_epoch=100, batch_size=4, finetune_parts=finetune_parts, n_query=15, **few_shot_params)
