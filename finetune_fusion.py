@@ -33,10 +33,10 @@ class FeatureFusionModule(nn.Module):
 
         if fusion_method == 'concat':
             pass
-        elif fusion_method == 'adaptive_weight':
+        elif fusion_method == 'adaptive_weight_scalar':
             self.alpha = nn.Parameter(torch.tensor(0.0))
             self.sigmoid = nn.Sigmoid()
-        elif fusion_method == 'adaptive_weight_per_param':
+        elif fusion_method == 'adaptive_weight_vector':
             self.source_alpha = nn.Parameter(torch.zeros(feature_dim))
             self.target_alpha = nn.Parameter(torch.zeros(feature_dim))
             self.sigmoid = nn.Sigmoid()
@@ -44,11 +44,11 @@ class FeatureFusionModule(nn.Module):
     def forward(self, source_feature, target_feature):
         if self.fusion_method == 'concat':
             return torch.cat([source_feature, target_feature], dim=1)
-        elif self.fusion_method == 'adaptive_weight_vectorwise':
+        elif self.fusion_method == 'adaptive_weight_scalar':
             source_weight = self.sigmoid(self.alpha)
             target_weight = 1-source_weight
             return source_weight*source_feature + target_weight*target_feature
-        elif self.fusion_method == 'adaptive_weight_elementwise':
+        elif self.fusion_method == 'adaptive_weight_vector':
             source_weight = self.sigmoid(self.source_alpha)
             target_weight = self.sigmoid(self.target_alpha)
             return source_weight*source_feature + target_weight*target_feature
