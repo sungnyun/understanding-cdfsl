@@ -85,5 +85,9 @@ python ./finetune_fusion.py --dataset miniImageNet --model ResNet10 --method bas
 --dataset_names CropDisease --no_tracking --startup_split
 
 python ./finetune_fusion.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
---fusion_method adaptive_weight --finetune_parts head --n_shot 5 \
+--fusion_method adaptive_weight_vectorwise --finetune_parts head --n_shot 5 \
+--dataset_names CropDisease --no_tracking --startup_split
+
+python ./finetune_fusion.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
+--fusion_method adaptive_weight_elementwise --finetune_parts head --n_shot 5 \
 --dataset_names CropDisease --no_tracking --startup_split

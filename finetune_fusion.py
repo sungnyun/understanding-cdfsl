@@ -27,7 +27,7 @@ from utils import *
 from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
 class FeatureFusionModule(nn.Module):
-    def __init__(self, fusion_method):
+    def __init__(self, fusion_method, feature_dim):
         super(FeatureFusionModule, self).__init__()
         self.fusion_method = fusion_method
 
@@ -36,13 +36,21 @@ class FeatureFusionModule(nn.Module):
         elif fusion_method == 'adaptive_weight':
             self.alpha = nn.Parameter(torch.tensor(0.0))
             self.sigmoid = nn.Sigmoid()
+        elif fusion_method == 'adaptive_weight_per_param':
+            self.source_alpha = nn.Parameter(torch.zeros(feature_dim))
+            self.target_alpha = nn.Parameter(torch.zeros(feature_dim))
+            self.sigmoid = nn.Sigmoid()
 
     def forward(self, source_feature, target_feature):
         if self.fusion_method == 'concat':
             return torch.cat([source_feature, target_feature], dim=1)
-        elif self.fusion_method == 'adaptive_weight':
+        elif self.fusion_method == 'adaptive_weight_vectorwise':
             source_weight = self.sigmoid(self.alpha)
             target_weight = 1-source_weight
+            return source_weight*source_feature + target_weight*target_feature
+        elif self.fusion_method == 'adaptive_weight_elementwise':
+            source_weight = self.sigmoid(self.source_alpha)
+            target_weight = self.sigmoid(self.target_alpha)
             return source_weight*source_feature + target_weight*target_feature
 
 class Classifier(nn.Module):
@@ -136,7 +144,7 @@ def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_di
             else:
                 classifier = Classifier(pretrained_model.feature.final_feat_dim, n_way)
                 classifier.cuda()
-            feature_fusion = FeatureFusionModule(fusion_method=fusion_method)
+            feature_fusion = FeatureFusionModule(fusion_method=fusion_method, feature_dim=pretrained_model.feature.final_feat_dim)
             feature_fusion.cuda()
 
             if finetune_parts == 'head':
@@ -216,7 +224,7 @@ def finetune(params, dataset_name, novel_loader, pretrained_model, checkpoint_di
                     target_pretrained_model.eval()
                     classifier.eval()
                     feature_fusion.eval()
-                    
+
                     ### Train
                     y_support = np.repeat(range( n_way ), n_support )
 
