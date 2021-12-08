@@ -48,7 +48,8 @@ def parse_args(script):
         parser.add_argument('--reset_layer_method', default='rerandomize', help='rerandomize, reinit')
         parser.add_argument('--unlabeled_stats', action='store_true', help ='Use statistics of unlabeled target dataset for BN running stats')
 
-        parser.add_argument('--finetune_parts', default=None, help='head, body, full')
+        parser.add_argument('--finetune_parts', default=None, type=str, help='head, body, full')
+        parser.add_argument('--fusion_method', default=None, type=str, help='concat, etc, ...')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
         parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')

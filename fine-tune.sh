@@ -24,6 +24,13 @@ python ./finetune.py --dataset none --model ResNet10 --method baseline --track_b
 python ./finetune.py --dataset none --model ResNet10 --method baseline --track_bn \
 --finetune_parts full --dataset_names CropDisease EuroSAT ISIC ChestX --n_shot 5
 
+
+python ./finetune.py --dataset none --model ResNet10 --method baseline --track_bn \
+--finetune_parts haed --dataset_names miniImageNet --n_shot 5
+
+python ./finetune.py --dataset none --model ResNet10 --method baseline --track_bn \
+--finetune_parts full --dataset_names miniImageNet --n_shot 5
+
 ##### Fine-tuning from pre-trained models #####
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
 --pretrain_type 1 --aug_mode base --finetune_parts head --n_shot 1 \
@@ -72,3 +79,11 @@ python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline -
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
 --pretrain_type 1 --aug_mode strong --finetune_parts full --n_shot 5 \
 --dataset_names CropDisease EuroSAT ISIC ChestX --no_tracking --startup_split
+
+python ./finetune_fusion.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
+--fusion_method concat --finetune_parts head --n_shot 5 \
+--dataset_names CropDisease --no_tracking --startup_split
+
+python ./finetune_fusion.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
+--fusion_method adaptive_weight --finetune_parts head --n_shot 5 \
+--dataset_names CropDisease --no_tracking --startup_split
