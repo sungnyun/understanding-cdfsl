@@ -17,7 +17,7 @@ from methods.boil import BOIL
 from methods.protonet import ProtoNet
 
 from io_utils import parse_args, get_resume_file  
-from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, DTD_few_shot
+from datasets import miniImageNet_few_shot, tieredImageNet_few_shot
 
 
 def train(base_loader, model, optimization, start_epoch, stop_epoch, params):    

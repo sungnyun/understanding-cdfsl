@@ -17,7 +17,7 @@ from data.datamgr import SimpleDataManager, SetDataManager
 from io_utils import parse_args, get_resume_file  
 from methods.byol import BYOL
 from methods.baselinetrain import BaselineTrain
-from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot, DTD_few_shot
+from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
 
 class apply_twice:
