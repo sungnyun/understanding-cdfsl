@@ -64,6 +64,8 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
     basename_train = '{}_{}way{}shot_{}_ft{}_bs{}_train.csv'.format(
         dataset_name, n_way, n_support, finetune_parts, finetune_epoch, batch_size)
     result_path_train = os.path.join(checkpoint_dir, basename_train)
+
+    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     print('Saving results to {}'.format(result_path))
 
     # Determine model weights path
