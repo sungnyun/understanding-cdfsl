@@ -122,10 +122,11 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
     if pretrain_type != 2 and unlabeled_source_loader is not None:
         unlabeled_source_loader_iter = iter(unlabeled_source_loader)
     
-    optimizer = torch.optim.SGD(opt_params,
-            lr=0.1, momentum=0.9,
-            weight_decay=1e-4,
-            nesterov=False)
+    optimizer = torch.optim.Adam(opt_params, lr=3e-4)
+            # torch.optim.SGD(opt_params,
+            # lr=0.1, momentum=0.9,
+            # weight_decay=1e-4,
+            # nesterov=False)
 
     scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
                                                      milestones=[400,600,800],
@@ -148,6 +149,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+                model.update_moving_average()
                 epoch_loss += loss.item()
             scheduler.step()
             print ('epoch: {}, loss: {}'.format(epoch, epoch_loss/len(unlabeled_source_loader)))
@@ -198,6 +200,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                 optimizer.zero_grad()
                 total_loss.backward()
                 optimizer.step()
+                model.update_moving_average()
                 epoch_loss += total_loss.item()
 
             scheduler.step()

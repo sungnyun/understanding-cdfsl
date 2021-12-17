@@ -45,9 +45,13 @@ class MoCo(nn.Module):
 
         self.encoder_q = base_encoder(backbone, num_class, loss_type='softmax')
         self.encoder_k = base_encoder(backbone, num_class, loss_type='softmax')
-        self.projector = nn.Linear(self.encoder_q.feature.final_feat_dim, dim)
+        self.projector_q = nn.Linear(self.encoder_q.feature.final_feat_dim, dim)
+        self.projector_k = nn.Linear(self.encoder_k.feature.final_feat_dim, dim)
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
+            param_k.data.copy_(param_q.data)
+            param_k.requires_grad = False
+        for param_q, param_k in zip(self.projector_q.parameters(), self.projector_k.parameters()):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
 
@@ -61,6 +65,8 @@ class MoCo(nn.Module):
         Momentum update of the key encoder
         """
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
+            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)        
+        for param_q, param_k in zip(self.projector_q.parameters(), self.projector_k.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)        
 
     @torch.no_grad()
@@ -83,14 +89,14 @@ class MoCo(nn.Module):
         Output:
             logits, targets
         """
-        q = self.projector(self.encoder_q.feature(im_q)) # queries: NxC
+        q = self.projector_q(self.encoder_q.feature(im_q)) # queries: NxC
         q = F.normalize(q, dim=1)
             
         # compute key features
         with torch.no_grad():  # no gradient to keys
             self._momentum_update_key_encoder()  # update the key encoder
 
-            k = self.projector(self.encoder_k.feature(im_k))  # keys: NxC
+            k = self.projector_k(self.encoder_k.feature(im_k))  # keys: NxC
             k = F.normalize(k, dim=1)
 
         # compute logits
@@ -220,7 +226,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
             epoch_loss = 0
             if epoch == 0:
                 outfile = os.path.join(checkpoint_dir, 'initial.tar')
-                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector_q.state_dict()}, outfile)
 
             for i, (X, y) in enumerate(unlabeled_source_loader): # For pre-training 2
                 outputs = model(im_q=X[0].cuda(non_blocking=True), im_k=X[1].cuda(non_blocking=True))
@@ -234,13 +240,13 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
             if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
                 outfile = os.path.join(checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector_q.state_dict()}, outfile)
     else:
         for epoch in range(start_epoch, stop_epoch):
             epoch_loss = 0
             if epoch == 0:
                 outfile = os.path.join(checkpoint_dir, '{}_initial.tar'.format(dataset_name))
-                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector_q.state_dict()}, outfile)
 
             for i, (X, y) in enumerate(unlabeled_target_loader):
                 outputs = model(im_q=X[0].cuda(non_blocking=True), im_k=X[1].cuda(non_blocking=True))
@@ -286,7 +292,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
             if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
                 outfile = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, epoch))
-                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector.state_dict()}, outfile)
+                torch.save({'epoch':epoch, 'state':model.encoder_q.state_dict(), 'projector':model.projector_q.state_dict()}, outfile)
 
 if __name__=='__main__':
     np.random.seed(10)
