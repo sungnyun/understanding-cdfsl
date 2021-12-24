@@ -274,17 +274,6 @@ if __name__=='__main__':
     else:
         raise ValueError('Invalid `model` argument: {}'.format(params.model))
 
-    if params.dataset == 'miniImageNet':
-        params.num_classes = 64
-    elif params.dataset == 'tieredImageNet':
-        params.num_classes = 351
-    elif params.dataset == 'ImageNet':
-        params.num_classes = 1000
-    elif params.dataset == 'none':
-        params.num_classes = 5
-    else:
-        raise ValueError('Invalid `dataset` argument: {}'.format(params.dataset))
-
     if params.method == 'baseline':
         model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     elif params.method == 'baseline++':

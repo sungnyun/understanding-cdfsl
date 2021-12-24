@@ -78,6 +78,18 @@ def parse_args(script):
     if params.reinit_bn_stats:
         raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
 
+    # Assign num_classes
+    if params.dataset == 'miniImageNet':
+        params.num_classes = 64
+    elif params.dataset == 'tieredImageNet':
+        params.num_classes = 351
+    elif params.dataset == 'ImageNet':
+        params.num_classes = 1000
+    elif params.dataset == 'none':
+        params.num_classes = 5
+    else:
+        raise ValueError('Invalid `dataset` argument: {}'.format(params.dataset))
+
     return params
 
 
