@@ -622,3 +622,15 @@ class ResNet18_84x84(torch.nn.Module):
         #     return x
         return x
 
+
+_backbone_class_map = {
+    'resnet10': ResNet10,
+    'resnet18': ResNet18,
+}
+
+
+def get_backbone_class(key):
+    if key in _backbone_class_map:
+        return _backbone_class_map[key]
+    else:
+        raise ValueError('Invalid backbone: {}'.format(key))

@@ -4,38 +4,76 @@ import glob
 import argparse
 import backbone
 
-def parse_args(script):
-    parser = argparse.ArgumentParser(description= 'few-shot script %s' %(script))
+def parse_args(mode):
+    parser = argparse.ArgumentParser(description='CD-FSL ({} mode)'.format(mode))
     parser.add_argument('--dataset'     , default='miniImageNet',        help='training base model')
-    parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture') 
-    parser.add_argument('--method'      , default='baseline',   help='baseline/protonet/maml') 
+    parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture')
+    parser.add_argument('--method'      , default='baseline',   help='baseline/protonet/maml')
     parser.add_argument('--train_n_way' , default=5, type=int,  help='class num to classify for training')
     parser.add_argument('--test_n_way'  , default=5, type=int,  help='class num to classify for testing (validation) ')
-    parser.add_argument('--n_shot'      , default=5, type=int,  help='number of labeled data in each class, same as n_support') 
-    parser.add_argument('--train_aug'   , action='store_true',  help='perform data augmentation or not during training ') 
+    parser.add_argument('--n_shot'      , default=5, type=int,  help='number of labeled data in each class, same as n_support')
+    parser.add_argument('--train_aug'   , action='store_true',  help='perform data augmentation or not during training ')
     parser.add_argument('--freeze_backbone'   , action='store_true', help='Freeze the backbone network for finetuning')
     parser.add_argument('--models_to_use', '--names-list', nargs='+', default=['miniImageNet', 'caltech256', 'DTD', 'cifar100', 'CUB'], help='pretained model to use')
     parser.add_argument('--fine_tune_all_models'   , action='store_true',  help='fine-tune each model before selection') #still required for save_features.py and test.py to find the model path correctly
 
-    if script == 'train':
+    # New parameters
+    parser.add_argument('--source_dataset', default='miniImageNet')  # replaces dataset
+    parser.add_argument('--target_dataset')  # replaces dataset_names
+    parser.add_argument('--backbone', default='resnet10', help='Refer to backbone._backbone_class_map')  # replaces model
+    # parser.add_argument('--model', default='base', help='Refer to model.__init__.model_class_map')  # similar to method
+
+    # Model parameters (make sure to prepend with `model_`)
+    parser.add_argument('--model_simclr_projection_dim', default=128, type=int)
+    parser.add_argument('--model_simclr_temperature', default=1.0, type=float)
+
+    # Pre-train params (determines pre-trained model output directory)
+    # These must be specified during evaluation and fine-tuning to select pre-trained model
+    parser.add_argument('--pls', action='store_true', help='Second-step pre-training on top of model trained with source labeled data')
+    parser.add_argument('--ls', action='store_true', help='Use labeled source data for pre-training')
+    parser.add_argument('--us', action='store_true', help='Use unlabeled source data for pre-training')
+    parser.add_argument('--ut', action='store_true', help='Use unlabeled target data for pre-training')
+    parser.add_argument('--tag', default='default', type=str, help='Tag used to differentiate output directories for pre-trained models')  # similar to aug_mode
+
+    """
+    Type 1: --ls
+    Type 2: --us
+    Type 3: --ut
+    Type 4: --ls --ut
+    Type 5: --us --ut
+    Type 6: --pls --ut
+    Type 7: --pls --ls --ut
+    Type 8: --pls --us --ut
+    """
+
+    # Pre-train params (non-identifying, i.e., does not affect output directory)
+    # You must specify pretrain_key to differentiate models with different non-identifying parameters)
+    parser.add_argument('--augmentation', default='strong', type=str, help="Augmentation used for pre-training {'base', 'strong'}")  # similar to aug_mode
+    parser.add_argument('--batch_size', default=64, type=int, help='Batch size for pre-training.')  # similar to aug_mode
+    parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for LS + UT.')  # similar to aug_mode
+    parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
+    parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
+    parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
+
+    if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class
         parser.add_argument('--save_freq'   , default=50, type=int, help='Save frequency')
         parser.add_argument('--pretrain_type', default=None, type=int, help='How to pre-train')
         parser.add_argument('--start_epoch' , default=0, type=int,help ='Starting epoch')
         parser.add_argument('--stop_epoch'  , default=400, type=int, help ='Stopping epoch') # for meta-learning methods, each epoch contains 100 episodes
-        
+
         # For pre-trained model (related to BN)
         parser.add_argument('--track_bn'   , action='store_true',  help='tracking BN stats')
         parser.add_argument('--freeze_bn', action='store_true',  help='freeze bn stats, i.e., use accumulated stats of pretrained model during inference. Note, track_bn must be on to do this.')
         parser.add_argument('--reinit_bn_stats'   , action='store_true',  help='Re-initialize BN running statistics every iteration')
-        
+
         # For SimCLR
         parser.add_argument('--aug_mode', default=None, help='augmentation for pre-training [base, strong]')
         parser.add_argument('--use_base_classes'   , action='store_true',  help='supervised training using base classes with self-training')
         parser.add_argument('--use_base_classes_as_unlabeled'   , action='store_true',  help='unsupervised training using base classes with self-training')
         parser.add_argument('--no_rerand'   , action='store_true',  help='No re-randomization before SimCLR traininig')
         parser.add_argument('--no_base_pretraining'   , action='store_true',  help='No use pre-trained model based on base classes')
-        
+
         # For fine-tuning
         parser.add_argument('--mv_init', action='store_true', help ='Re-initialize all weights with existing mean-var stats')
         parser.add_argument('--simclr_finetune', action='store_true', help ='Fine-tuning using the model trained by SimCLR')
@@ -58,13 +96,13 @@ def parse_args(script):
         # For STARTUP-like split (deprecated. Update with finetune.py)
         parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')
         # For split (split may be used depending on pretrain_type
-        parser.add_argument('--unlabeled_ratio', default=20, help ='Percentage of dataset used for unlabeled split')
-        parser.add_argument('--split_seed', default=1, help ='Random seed used for split. If set to 1 and unlabeled_ratio==20, will use split defined by STARTUP')
-    elif script == 'save_features':
-        parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want 
+        parser.add_argument('--unlabeled_ratio', default=20, type=int, help ='Percentage of dataset used for unlabeled split')
+        parser.add_argument('--split_seed', default=1, type=int, help ='Random seed used for split. If set to 1 and unlabeled_ratio==20, will use split defined by STARTUP')
+    elif mode == 'save_features':
+        parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
         parser.add_argument('--save_iter', default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')
-    elif script == 'test':
-        parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want 
+    elif mode == 'test':
+        parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want
         parser.add_argument('--save_iter', default=-1, type=int,help ='saved feature from the model trained in x epoch, use the best model if x is -1')
         parser.add_argument('--adaptation'  , action='store_true', help='further adaptation in test time or not')
     else:
@@ -74,9 +112,11 @@ def parse_args(script):
 
     # Double-checking parameters
     if params.freeze_bn and not params.track_bn:
-        raise AssertionError('Plz check freeze_bn and track_bn arguments.')
+        raise AssertionError('Invalid parameter combination')
     if params.reinit_bn_stats:
         raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
+    if params.ut and not params.target_dataset:
+        raise AssertionError('Invalid parameter combination')
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':
@@ -89,6 +129,14 @@ def parse_args(script):
         params.num_classes = 5
     else:
         raise ValueError('Invalid `dataset` argument: {}'.format(params.dataset))
+
+    # Default optimizers
+    if params.optimizer is None:
+        if params.model in ['simsiam', 'byol']:
+            params.optimizer = 'adam'
+        else:
+            params.optimizer = 'sgd'
+
 
     return params
 
@@ -120,7 +168,7 @@ def get_resume_file(checkpoint_dir, dataset_name=None):
 
     return resume_file
 
-def get_best_file(checkpoint_dir):    
+def get_best_file(checkpoint_dir):
     best_file = os.path.join(checkpoint_dir, 'best_model.tar')
     if os.path.isfile(best_file):
         return best_file
