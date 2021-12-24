@@ -93,6 +93,8 @@ def _apply_split(dataset: ImageFolder, split: List[str]):
     split_set = set(split)
     samples = []
     for path, sample in zip(img_paths, dataset.samples):
+        if len(split) > 0 and '.jpg' not in split[0] and dataset.name == 'ISIC':  # HOTFIX (paths in ISIC's default split file don't have ".jpg")
+            path = path.replace('.jpg', '')
         if path in split_set:
             samples.append(sample)
 
