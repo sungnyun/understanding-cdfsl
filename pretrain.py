@@ -1,4 +1,6 @@
 import math
+from functools import lru_cache
+
 import numpy as np
 import torch
 import torch.nn as nn
@@ -39,13 +41,10 @@ class projector_SIMCLR(nn.Module):
 
 
 class NTXentLoss(nn.Module):
-    def __init__(self, device, batch_size, temperature, use_cosine_similarity):
+    def __init__(self, temperature, use_cosine_similarity):
         super(NTXentLoss, self).__init__()
-        self.batch_size = batch_size
         self.temperature = temperature
-        self.device = device
         self.softmax = torch.nn.Softmax(dim=-1)
-        self.mask_samples_from_same_repr = self._get_correlated_mask().type(torch.bool)
         self.similarity_function = self._get_similarity_function(use_cosine_similarity)
         self.criterion = torch.nn.CrossEntropyLoss(reduction="sum")
 
@@ -56,15 +55,16 @@ class NTXentLoss(nn.Module):
         else:
             return self._dot_simililarity
 
-    def _get_correlated_mask(self):
-        diag = np.eye(2 * self.batch_size)
-        l1 = np.eye((2 * self.batch_size), 2 *
-                    self.batch_size, k=-self.batch_size)
-        l2 = np.eye((2 * self.batch_size), 2 *
-                    self.batch_size, k=self.batch_size)
+    @lru_cache(maxsize=4)
+    def _get_correlated_mask(self, batch_size):
+        diag = np.eye(2 * batch_size)
+        l1 = np.eye((2 * batch_size), 2 *
+                    batch_size, k=-batch_size)
+        l2 = np.eye((2 * batch_size), 2 *
+                    batch_size, k=batch_size)
         mask = torch.from_numpy((diag + l1 + l2))
         mask = (1 - mask).type(torch.bool)
-        return mask.to(self.device)
+        return mask
 
     @staticmethod
     def _dot_simililarity(x, y):
@@ -83,24 +83,27 @@ class NTXentLoss(nn.Module):
 
     def forward(self, zis, zjs):
         representations = torch.cat([zjs, zis], dim=0)
+        batch_size = zis.shape[0]
+        device = representations.device
 
         similarity_matrix = self.similarity_function(
             representations, representations)
 
         # filter out the scores from the positive samples
-        l_pos = torch.diag(similarity_matrix, self.batch_size)
-        r_pos = torch.diag(similarity_matrix, -self.batch_size)
-        positives = torch.cat([l_pos, r_pos]).view(2 * self.batch_size, 1)
+        l_pos = torch.diag(similarity_matrix, batch_size)
+        r_pos = torch.diag(similarity_matrix, -batch_size)
+        positives = torch.cat([l_pos, r_pos]).view(2 * batch_size, 1)
 
-        negatives = similarity_matrix[self.mask_samples_from_same_repr].view(2 * self.batch_size, -1)
+        mask = self._get_correlated_mask(batch_size).to(device)
+        negatives = similarity_matrix[mask].view(2 * batch_size, -1)
 
         logits = torch.cat((positives, negatives), dim=1)
         logits /= self.temperature
 
-        labels = torch.zeros(2 * self.batch_size).to(self.device).long()
+        labels = torch.zeros(2 * batch_size).to(device).long()
         loss = self.criterion(logits, labels)
 
-        return loss / (2 * self.batch_size)
+        return loss / (2 * batch_size)
 
 
 def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
@@ -137,7 +140,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
     if pretrain_type != 1:
         clf_SIMCLR = projector_SIMCLR(model.feature.final_feat_dim, out_dim=128) # Projection dimension is fixed to 128
-        criterion_SIMCLR = NTXentLoss('cuda', batch_size=64, temperature=1, use_cosine_similarity=True)
+        criterion_SIMCLR = NTXentLoss(temperature=1, use_cosine_similarity=True)
 
         clf_SIMCLR.train()
         clf_SIMCLR.cuda()
@@ -162,7 +165,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
 
     print ("Learning setup is set!")
 
-    if pretrain_type == 1:
+    if pretrain_type == 1:  # SL
         for epoch in range(start_epoch, stop_epoch):
             if not os.path.isdir(checkpoint_dir):
                 os.makedirs(checkpoint_dir)
@@ -179,7 +182,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
             if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
                 outfile = os.path.join(checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save({'epoch':epoch, 'state':model.state_dict()}, outfile)
-    elif pretrain_type == 2:
+    elif pretrain_type == 2:  # SU
         for epoch in range(start_epoch, stop_epoch):
             epoch_loss = 0
             if epoch == 0:
@@ -202,7 +205,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
             if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
                 outfile = os.path.join(checkpoint_dir, '{:d}.tar'.format(epoch))
                 torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
-    else:
+    else:  # TU + a
         for epoch in range(start_epoch, stop_epoch):
             epoch_loss = 0
             if epoch == 0:
@@ -216,7 +219,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                 if labeled_source_loader is None and unlabeled_source_loader is None: # For pre-training 3, 6
                     loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
 
-                elif labeled_source_loader is not None: # For pre-training 4, 7
+                elif labeled_source_loader is not None: # SL (4, 7)
                     try:
                         X_base, y_base = labeled_source_loader_iter.next()
                     except StopIteration:
@@ -230,7 +233,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
                     gamma = 0.50
                     loss = gamma * criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2)) + (1-gamma) * nll_criterion(log_probability_base, y_base.cuda())
                     
-                elif unlabeled_source_loader is not None: # For pre-training 5, 8
+                elif unlabeled_source_loader is not None:  # SU (5, 8)
                     try:
                         X_base, y_base = unlabeled_source_loader_iter.next()
                     except StopIteration:
