@@ -52,11 +52,14 @@ def parse_args(script):
         parser.add_argument('--fusion_method', default=None, type=str, help='concat, etc, ...')
 
         parser.add_argument('--no_tracking', action='store_true', help='No tracking the test accuracy for every epoch')
-        parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')
+        parser.add_argument('--dataset_names', nargs='+', type=str, default=["miniImageNet_test", "CropDisease", "EuroSAT", "ISIC", "ChestX"], help='CD-FSL datasets to fine-tune')
         parser.add_argument('--use_simclr_clf', action='store_true', help ='Use pre-trained SimCLR projection head')
 
-        # For STARTUP-like split
+        # For STARTUP-like split (deprecated. Update with finetune.py)
         parser.add_argument('--startup_split', action='store_true', help ='Use 80% of dataset, similar to STARTUP. Enabled automatically for simclr_finetune.')
+        # For split (split may be used depending on pretrain_type
+        parser.add_argument('--unlabeled_ratio', default=20, help ='Percentage of dataset used for unlabeled split')
+        parser.add_argument('--split_seed', default=1, help ='Random seed used for split. If set to 1 and unlabeled_ratio==20, will use split defined by STARTUP')
     elif script == 'save_features':
         parser.add_argument('--split'       , default='novel', help='base/val/novel') #default novel, but you can also test base/val class accuracy if you want 
         parser.add_argument('--save_iter', default=-1, type=int,help ='save feature from the model trained in x epoch, use the best model if x is -1')

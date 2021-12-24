@@ -13,27 +13,11 @@ import glob
 import configs
 import backbone
 from data.datamgr import SimpleDataManager, SetDataManager
+from datasets.dataloader import get_dataloader, get_unlabeled_dataloader
 from methods.baselinetrain import BaselineTrain
 
 from io_utils import parse_args, get_resume_file  
 from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
-
-
-class apply_twice:
-    '''
-        A wrapper for torchvision transform. The transform is applied twice for 
-        SimCLR training
-    '''
-    def __init__(self, transform, transform2=None):
-        self.transform = transform
-
-        if transform2 is not None:
-            self.transform2 = transform2
-        else:
-            self.transform2 = transform
-
-    def __call__(self, img):
-        return self.transform(img), self.transform2(img)
 
 
 class SwAV(nn.Module): # wrapper for BaselineTrain
@@ -103,50 +87,6 @@ def distributed_sinkhorn(out, params):
 
     Q *= B # the colomns must sum to 1 so that Q is an assignment
     return Q.t()
-
-
-def set_labeled_source_loader(dataset_name, aug_mode, batch_size):
-    if dataset_name == 'miniImageNet':
-        transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = miniImageNet_few_shot.SimpleDataset(transform, train=True)
-        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False) # batch size is originally 16
-    elif dataset_name == 'tieredImageNet':
-        transform = tieredImageNet_few_shot.TransformLoader(image_size=84).get_composed_transform(aug=False) # Do no augmentation for tieredImageNet to be consisitent with the literature
-        dataset = tieredImageNet_few_shot.SimpleDataset(transform, train=True)
-        labeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=False)
-    return labeled_source_loader
-
-def set_unlabeled_source_loader(dataset_name, aug_mode, batch_size):
-    if dataset_name == 'miniImageNet':
-        transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = miniImageNet_few_shot.SimpleDataset(apply_twice(transform), train=True)
-    elif dataset_name == 'tieredImageNet':
-        transform = tieredImageNet_few_shot.TransformLoader(image_size=84).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = tieredImageNet_few_shot.SimpleDataset(apply_twice(transform), train=True)
-    unlabeled_source_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=True)
-    return unlabeled_source_loader
-
-def set_unlabeled_target_loader(dataset_name, aug_mode, batch_size):
-    if dataset_name == 'miniImageNet':
-        transform = miniImageNet_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = miniImageNet_few_shot.SimpleDataset(apply_twice(transform), train=False, split=True)
-    elif dataset_name == 'tieredImageNet':
-        transform = tieredImageNet_few_shot.TransformLoader(image_size=84).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = tieredImageNet_few_shot.SimpleDataset(apply_twice(transform), train=False, split=True)
-    elif dataset_name == 'CropDisease':
-        transform = CropDisease_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = CropDisease_few_shot.SimpleDataset(apply_twice(transform), split=True)
-    elif dataset_name == 'EuroSAT':
-        transform = EuroSAT_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = EuroSAT_few_shot.SimpleDataset(apply_twice(transform), split=True)
-    elif dataset_name == 'ISIC':
-        transform = ISIC_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = ISIC_few_shot.SimpleDataset(apply_twice(transform), split=True)
-    elif dataset_name == 'ChestX':
-        transform = Chest_few_shot.TransformLoader(image_size=224).get_composed_transform(aug=True, aug_mode=aug_mode)
-        dataset = Chest_few_shot.SimpleDataset(apply_twice(transform), split=True)
-    unlabeled_target_loader = torch.utils.data.DataLoader(dataset, batch_size=batch_size, num_workers=2, shuffle=True, drop_last=True)
-    return unlabeled_target_loader
 
 
 def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
@@ -424,42 +364,59 @@ if __name__=='__main__':
         checkpoint_dir = '%s/checkpoints/%s/%s_%s_swav/type%s_%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type), params.aug_mode)
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
-    
-    ##################################################################
-    if params.pretrain_type == 1: # Pretrained on labeled source data (Transfer)
-        raise NotImplementedError 
 
-    elif params.pretrain_type == 2: # Pretrained on unlabeled source data (SwAV (base))
-        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
-        print('Data loader initialized successfully! unlabeled source {}'.format(params.dataset))
+    """
+    pretrain_type
+        1: Source L
+        2: Source U
+
+        3: Target U
+        6: (Source L) > Target U
+
+        4: Source L + Target U
+        7: (Source L) > Source L + Target U
+
+        5: Source U + Target U
+        8: (Source L) > Source U + Target U
+    """
+    if params.pretrain_type == 1:
+        raise NotImplementedError
+
+    labeled_source_loader = None
+    unlabeled_source_loader = None
+    unlabeled_target_loader = None
+
+    base_batch_size = 64
+    labeled_source_bs = base_batch_size
+    unlabeled_source_bs = base_batch_size
+    unlabeled_target_bs = base_batch_size
+    if params.pretrain_type in [5, 8]:
+        unlabeled_source_bs //= 2
+        unlabeled_target_bs //= 2
+
+    if params.pretrain_type in [1, 4, 7]:
+        labeled_source_loader = get_dataloader(dataset_name=params.dataset, augmentation=params.aug_mode,
+                                               batch_size=labeled_source_bs)
+        print('Source labeled ({}) data loader initialized.'.format(params.dataset))
+    if params.pretrain_type in [2, 5, 8]:
+        print('Source unlabeled ({}) data loader initialized.'.format(params.dataset))
+        unlabeled_source_loader = get_dataloader(dataset_name=params.dataset, augmentation=params.aug_mode,
+                                                 batch_size=unlabeled_source_bs,
+                                                 siamese=True)  # important
+
+    if params.pretrain_type in [1, 2]:
+        print('Start pretraining type {}'.format(params.pretrain_type).center(60).center(80, '#'))
         train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
-             labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=None)
-
-    elif params.pretrain_type in [3, 6]: # 3: Pretrained on unlabeled target data (SwAV)
-                                         # 6: Pretrained on labeled source data -> unlabeled target data (Transfer+SwAV) (Pre-trained by type 1 and then type 3)
-        dataset_names = params.dataset_names
-        for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=64)
-            print('Data loader initialized successfully! unlabeled target {}'.format(dataset_name))
+              labeled_source_loader=labeled_source_loader, unlabeled_source_loader=unlabeled_source_loader,
+              unlabeled_target_loader=unlabeled_target_loader)
+    else:
+        for i, dataset_name in enumerate(params.dataset_names):
+            unlabeled_target_loader = get_unlabeled_dataloader(dataset_name=dataset_name, augmentation=params.aug_mode,
+                                                               batch_size=unlabeled_target_bs, siamese=True,
+                                                               unlabeled_ratio=params.unlabeled_ratio)
+            print('Target unlabeled ({}) data loader initialized.'.format(params.dataset))
+            print('Start pretraining type {}'.format(params.pretrain_type).center(60).center(80, '#'))
+            print('Target {}/{}: {}'.format(i + 1, len(params.dataset_names), dataset_name).center(60).center(80, '#'))
             train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
-                  labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
-
-    elif params.pretrain_type in [4, 7]: # 4: Pretrained on labeled source data + unlabeled target data
-                                         # 7: Pretrained on labeled source data -> labeled source data + unlabeled target data (Pre-trained by type 1 and then type 4)
-        labeled_source_loader = set_labeled_source_loader(params.dataset, params.aug_mode, batch_size=64)
-        dataset_names = params.dataset_names
-        for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=64)
-            print('Data loader initialized successfully! unlabeled target {} with labeled {}'.format(dataset_name, params.dataset))
-            train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
-                  labeled_source_loader=labeled_source_loader, unlabeled_source_loader=None, unlabeled_target_loader=unlabeled_target_loader)
-
-    elif params.pretrain_type in [5, 8]: # 5: Pretrained on unlabeled source data + unlabeled target data
-                                         # 8: Pretrained on labeled source data -> unlabeled source data + unlabeled target data (Pre-trained by type 1 and then type 5)
-        unlabeled_source_loader = set_unlabeled_source_loader(params.dataset, params.aug_mode, batch_size=32)
-        dataset_names = params.dataset_names
-        for dataset_name in dataset_names:
-            unlabeled_target_loader = set_unlabeled_target_loader(dataset_name, params.aug_mode, batch_size=32)
-            print('Data loader initialized successfully! unlabeled target {} with unlabeled {}'.format(dataset_name, params.dataset))
-            train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
-                  labeled_source_loader=None, unlabeled_source_loader=unlabeled_source_loader, unlabeled_target_loader=unlabeled_target_loader)
+                  labeled_source_loader=labeled_source_loader, unlabeled_source_loader=unlabeled_source_loader,
+                  unlabeled_target_loader=unlabeled_target_loader)
