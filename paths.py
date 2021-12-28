@@ -1,5 +1,6 @@
 import glob
 import os
+import re
 from argparse import Namespace
 
 import configs
@@ -74,13 +75,21 @@ def get_pretrain_state_path(output_directory, epoch=0):
 
 
 def get_final_pretrain_state_path(output_directory):
-    pattern = os.path.join(output_directory, 'pretrain_state_*.pt')
-    paths = glob.glob(pattern)
-    paths.sort()
-    if not paths == 0 or len(paths) == 1 and 'init' in paths[0]:
-        raise FileNotFoundError('Could not find valid pretrain state file in {}'.format(output_directory))
-    else:
-        return paths[-1]
+    glob_pattern = os.path.join(output_directory, 'pretrain_state_*.pt')
+    paths = glob.glob(glob_pattern)
+
+    pattern = re.compile('pretrain_state_(\d{4}).pt')
+    paths_by_epoch = dict()
+    for path in paths:
+        match = pattern.search(path)
+        if match:
+            paths_by_epoch[match.group(1)] = path
+
+    if len(paths_by_epoch) == 0:
+        raise FileNotFoundError('Could not find valid pre-train state file in {}'.format(output_directory))
+
+    max_epoch = max(paths_by_epoch.keys())
+    return paths_by_epoch[max_epoch]
 
 
 def get_pretrain_params_path(output_directory):
