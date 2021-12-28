@@ -90,6 +90,9 @@ def main():
     for epoch in range(params.epochs):
         print('EPOCH {}'.format(epoch).center(40).center(80, '#'))
 
+        epoch_loss = 0
+        steps = 0
+
         if epoch == 0:
             state_path = get_pretrain_state_path(output_dir, epoch=0)
             print('Saving pre-train state to:')
@@ -102,12 +105,18 @@ def main():
                 loss, _ = model.compute_cls_loss_and_accuracy(x.cuda(), y.cuda())
                 loss.backward()
                 optimizer.step()
+
+                epoch_loss += loss.item()
+                steps += 1
         elif not params.ls and params.us and not params.ut:  # only us (type 2)
             for x, _ in tqdm(unlabeled_source_loader):
                 optimizer.zero_grad()
                 loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())
                 loss.backward()
                 optimizer.step()
+
+                epoch_loss += loss.item()
+                steps += 1
         elif params.ut:  # ut (epoch is based on unlabeled target)
             for x, _ in tqdm(unlabeled_target_loader):
                 optimizer.zero_grad()
@@ -134,12 +143,16 @@ def main():
                     loss = target_loss
                 loss.backward()
                 optimizer.step()
+
+                epoch_loss += loss.item()
+                steps += 1
         else:
             raise AssertionError('Unknown training combination.')
 
         if scheduler is not None:
             scheduler.step()
 
+        print('Epoch {:04d}: loss={:6.4f}'.format(epoch, epoch_loss / steps))
         epoch += 1
         if epoch % params.model_save_interval == 0 or epoch == params.epochs:
             state_path = get_pretrain_state_path(output_dir, epoch=epoch)
