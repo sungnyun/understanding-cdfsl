@@ -76,12 +76,15 @@ def _load_split(path) -> List[str]:
     return df["img_path"].values
 
 
-def _get_split_path(dataset: ImageFolder, ratio: int, seed=1, unlabeled=True):
+def _get_split_path(dataset: ImageFolder, ratio: int, seed=1, unlabeled=True, makedirs=True):
     if unlabeled:
         basename = '{}_unlabeled_{}.csv'.format(dataset.name, ratio)
     else:
         basename = '{}_labeled_{}.csv'.format(dataset.name, 100 - ratio)
-    return os.path.join(DIRNAME, 'split_seed_{}'.format(seed), basename)
+    path = os.path.join(DIRNAME, 'split_seed_{}'.format(seed), basename)
+    if makedirs:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+    return path
 
 
 def _apply_split(dataset: ImageFolder, split: List[str]):
@@ -95,6 +98,10 @@ def _apply_split(dataset: ImageFolder, split: List[str]):
     for path, sample in zip(img_paths, dataset.samples):
         if len(split) > 0 and '.jpg' not in split[0] and dataset.name == 'ISIC':  # HOTFIX (paths in ISIC's default split file don't have ".jpg")
             path = path.replace('.jpg', '')
+        if len(split) > 0 and '.jpg' in split[0] and dataset.name == 'miniImageNet_test':  # HOTFIX (paths in mini test's default split file are different)
+            path = path.replace('.JPEG', '')
+            pre, post = path.split('_')
+            path = '{}{:08d}.jpg'.format(pre, int(post))
         if path in split_set:
             samples.append(sample)
 
