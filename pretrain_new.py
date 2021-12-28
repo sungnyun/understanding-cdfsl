@@ -66,6 +66,7 @@ def main():
         print('Loading previous state for second-step pre-training:')
         print(state_path)
 
+        # Note, override model.load_state_dict to change this behavior.
         state = torch.load(state_path)
         model.load_state_dict(state, strict=True)
 
@@ -101,43 +102,43 @@ def main():
                 loss, _ = model.compute_cls_loss_and_accuracy(x.cuda(), y.cuda())
                 loss.backward()
                 optimizer.step()
-                if scheduler is not None:
-                    scheduler.step()
         elif not params.ls and params.us and not params.ut:  # only us (type 2)
             for x, _ in tqdm(unlabeled_source_loader):
                 optimizer.zero_grad()
                 loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())
                 loss.backward()
                 optimizer.step()
-                if scheduler is not None:
-                    scheduler.step()
         elif params.ut:  # ut (epoch is based on unlabeled target)
             for x, _ in tqdm(unlabeled_target_loader):
-                total_loss = torch.tensor(0.0).cuda()
                 optimizer.zero_grad()
-                total_loss += model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
-
+                target_loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
+                source_loss = None
                 if params.ls:  # type 4, 7
                     try:
                         sx, sy = labeled_source_loader_iter.next()
                     except (StopIteration, NameError):
                         labeled_source_loader_iter = iter(labeled_source_loader)
                         sx, sy = labeled_source_loader_iter.next()
-                    total_loss += model.compute_cls_loss_and_accuracy(sx.cuda(), sy.cuda())[0]  # LS loss
+                    source_loss = model.compute_cls_loss_and_accuracy(sx.cuda(), sy.cuda())[0]  # LS loss
                 if params.us:  # type 5, 8
                     try:
                         sx, sy = unlabeled_source_loader_iter.next()
                     except (StopIteration, NameError):
                         unlabeled_source_loader_iter = iter(unlabeled_source_loader)
                         sx, sy = unlabeled_source_loader_iter.next()
-                    total_loss += model.compute_ssl_loss(sx[0].cuda(), sx[1].cuda())  # US loss
+                    source_loss = model.compute_ssl_loss(sx[0].cuda(), sx[1].cuda())  # US loss
 
-                total_loss.backward()
+                if source_loss:
+                    loss = source_loss * params.gamma + target_loss * (1 - params.gamma)
+                else:
+                    loss = target_loss
+                loss.backward()
                 optimizer.step()
-                if scheduler is not None:
-                    scheduler.step()
         else:
             raise AssertionError('Unknown training combination.')
+
+        if scheduler is not None:
+            scheduler.step()
 
         epoch += 1
         if epoch % params.model_save_interval == 0 or epoch == params.epochs:
