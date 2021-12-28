@@ -89,10 +89,12 @@ class NTXentLoss(nn.Module):
 
 
 class SimCLR(BaseSelfSupervisedModel):
+
     def __init__(self, backbone: nn.Module, params: Namespace):
         super().__init__(backbone, params)
         self.head = ProjectionHead(backbone.final_feat_dim, out_dim=params.model_simclr_projection_dim)
         self.ssl_loss_fn = NTXentLoss(temperature=params.model_simclr_temperature, use_cosine_similarity=True)
+        self.final_feat_dim = self.backbone.final_feat_dim
 
     def compute_ssl_loss(self, x1, x2=None, return_features=False):
         if x2 is None:

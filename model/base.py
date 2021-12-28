@@ -9,7 +9,13 @@ from torch import nn
 class BaseModel(nn.Module):
     """
     BaseModel subclasses self-contain all modules and losses required for pre-training.
+
+    - supported_feature_selectors: Feature selectors (see `forward_features()`) are used during fine-tuning
+      to select which features (from which layer the features should be extracted) should be used for downstream
+      tasks. This class attribute should be set for subclasses to prevent mistakes regarding the feature_selector
+      argument (see `params.ft_features`).
     """
+    supported_feature_selectors = []
 
     def __init__(self, backbone: nn.Module, params: Namespace):
         super().__init__()
@@ -18,8 +24,9 @@ class BaseModel(nn.Module):
         self.classifier = nn.Linear(backbone.final_feat_dim, params.num_classes)
         self.classifier.bias.data.fill_(0)
         self.cls_loss_function = nn.CrossEntropyLoss()
+        self.final_feat_dim = backbone.final_feat_dim
 
-    def forward_features(self, x):
+    def forward_features(self, x, feature_selector: str = None):
         """
         You'll likely need to override this method for SSL models.
         """
