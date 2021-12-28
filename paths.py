@@ -63,11 +63,13 @@ def get_output_directory(params: Namespace, previous_step=False, makedirs=True):
     return path
 
 
-def get_pretrain_state_path(output_directory, epoch=None):
-    if epoch is None:
-        basename = 'pretrain_state_init.pt'
-    else:
-        basename = 'pretrain_state_{:04d}.pt'.format(epoch)
+def get_pretrain_state_path(output_directory, epoch=0):
+    """
+    :param output_directory:
+    :param epoch: Number of completed epochs. I.e., 0 = initial.
+    :return:
+    """
+    basename = 'pretrain_state_{:04d}.pt'.format(epoch)
     return os.path.join(output_directory, basename)
 
 

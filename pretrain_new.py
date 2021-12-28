@@ -91,7 +91,7 @@ def main():
         print('EPOCH {}'.format(epoch).center(40).center(80, '#'))
 
         if epoch == 0:
-            state_path = get_pretrain_state_path(output_dir, epoch=None)
+            state_path = get_pretrain_state_path(output_dir, epoch=0)
             print('Saving pre-train state to:')
             print(state_path)
             torch.save(model.state_dict(), state_path)
