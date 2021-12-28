@@ -55,7 +55,7 @@ def get_output_directory(params: Namespace, previous_step=False, makedirs=True):
     pretrain_specifiers.append(params.tag)
     path = os.path.join(path, '_'.join(pretrain_specifiers))
 
-    if params.target_dataset:
+    if params.ut:
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
 
     if makedirs:
@@ -94,3 +94,28 @@ def get_final_pretrain_state_path(output_directory):
 
 def get_pretrain_params_path(output_directory):
     return os.path.join(output_directory, 'pretrain_params.json')
+
+
+def get_ft_output_directory(params, makedirs=True):
+    path = get_output_directory(params, makedirs=makedirs)
+    if not params.ut:
+        path = os.path.join(path, params.target_dataset)
+    ft_basename = '{:02d}way_{:03d}shot_{}'.format(params.n_way, params.n_shot, params.ft_tag)
+    path = os.path.join(path, ft_basename)
+
+    if makedirs:
+        os.makedirs(path, exist_ok=True)
+
+    return path
+
+
+def get_ft_params_path(output_directory):
+    return os.path.join(output_directory, 'params.json')
+
+
+def get_ft_train_history_path(output_directory):
+    return os.path.join(output_directory, 'train_history.csv')
+
+
+def get_ft_test_history_path(output_directory):
+    return os.path.join(output_directory, 'test_history.csv')

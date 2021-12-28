@@ -21,7 +21,7 @@ def parse_args(mode):
     parser.add_argument('--source_dataset', default='miniImageNet')  # replaces dataset
     parser.add_argument('--target_dataset')  # replaces dataset_names
     parser.add_argument('--backbone', default='resnet10', help='Refer to backbone._backbone_class_map')  # replaces model
-    # parser.add_argument('--model', default='base', help='Refer to model.__init__.model_class_map')  # similar to method
+    # parser.add_argument('--model', default='base', help='Refer to model.model_class_map')  # similar to method
 
     # Model parameters (make sure to prepend with `model_`)
     parser.add_argument('--model_simclr_projection_dim', default=128, type=int)
@@ -50,10 +50,25 @@ def parse_args(mode):
     # You must specify pretrain_key to differentiate models with different non-identifying parameters)
     parser.add_argument('--augmentation', default='strong', type=str, help="Augmentation used for pre-training {'base', 'strong'}")  # similar to aug_mode
     parser.add_argument('--batch_size', default=64, type=int, help='Batch size for pre-training.')  # similar to aug_mode
-    parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for LS + UT.')  # similar to aug_mode
+    parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for {LS,US} + UT.')  # similar to aug_mode
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
+
+    # New ft params
+    parser.add_argument('--n_way', default=5, type=int)
+    parser.add_argument('--n_query_shot', default=15, type=int)
+
+    parser.add_argument('--ft_head', default='linear', help='See `model.classifier_head.CLASSIFIER_HEAD_CLASS_MAP`')
+    parser.add_argument('--ft_tag', default='default', type=str, help='Tag used to differentiate output directories for fine-tuned models')
+    parser.add_argument('--ft_epochs', default=100, type=int)
+    parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
+    parser.add_argument('--ft_batch_size', default=4, type=int)
+    parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
+    parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
+    parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')
+    parser.add_argument('--ft_intermediate_test', action='store_true', help='Evaluate on query set during fine-tuning')
+    parser.add_argument('--ft_episode_seed', default=0, type=int)
 
     if mode == 'train' or mode == 'pretrain':
         parser.add_argument('--num_classes' , default=200, type=int, help='total number of classes in softmax, only used in baseline') #make it larger than the maximum label value in base class
@@ -137,6 +152,8 @@ def parse_args(mode):
         else:
             params.optimizer = 'sgd'
 
+    params.ft_train_body = params.ft_parts in ['body', 'full']
+    params.ft_train_head = params.ft_parts in ['head', 'full']
 
     return params
 
