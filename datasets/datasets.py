@@ -99,7 +99,9 @@ class ChestXDataset(ImageFolder):
     def __init__(self, root=ChestX_path, *args, **kwargs):
         csv_path = os.path.join(root, "Data_Entry_2017.csv")
         images_root = os.path.join(root, "images")
-        self.used_labels = ["Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass", "Nodule", "Pneumonia",
+        # self.used_labels = ["Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass", "Nodule", "Pneumonia",
+        #                     "Pneumothorax"]
+        self.used_labels = ["Atelectasis", "Cardiomegaly", "Effusion", "Infiltration", "Mass", "Nodule",
                             "Pneumothorax"]
         self.labels_maps = {"Atelectasis": 0, "Cardiomegaly": 1, "Effusion": 2, "Infiltration": 3, "Mass": 4,
                             "Nodule": 5, "Pneumothorax": 6}
