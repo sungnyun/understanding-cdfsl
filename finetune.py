@@ -64,8 +64,6 @@ def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_
     basename_train = '{}_{}way{}shot_{}_ft{}_bs{}_train.csv'.format(
         dataset_name, n_way, n_support, finetune_parts, finetune_epoch, batch_size)
     result_path_train = os.path.join(checkpoint_dir, basename_train)
-
-    os.makedirs(os.path.dirname(result_path), exist_ok=True)
     print('Saving results to {}'.format(result_path))
 
     # Determine model weights path
@@ -269,6 +267,18 @@ if __name__=='__main__':
     else:
         raise ValueError('Invalid `model` argument: {}'.format(params.model))
 
+    pretrained_dataset = params.dataset
+    if pretrained_dataset == 'miniImageNet':
+        params.num_classes = 64
+    elif pretrained_dataset == 'tieredImageNet':
+        params.num_classes = 351
+    elif pretrained_dataset == 'ImageNet':
+        params.num_classes = 1000
+    elif pretrained_dataset == 'none':
+        params.num_classes = 5
+    else:
+        raise ValueError('Invalid `dataset` argument: {}'.format(pretrained_dataset))
+
     if params.method == 'baseline':
         pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
     elif params.method == 'baseline++':
@@ -290,7 +300,7 @@ if __name__=='__main__':
     for dataset_name in dataset_names:
         print (dataset_name)
         print ('Initializing data loader...')
-        if dataset_name == "miniImageNet":
+        if dataset_name == "miniImageNet_test":
             datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
         if dataset_name == "tieredImageNet":
             image_size = 84
@@ -304,7 +314,7 @@ if __name__=='__main__':
         elif dataset_name == "ChestX":
             datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
         
-        if dataset_name == "miniImageNet" or dataset_name == "tieredImageNet":
+        if dataset_name == "miniImageNet_test" or dataset_name == "tieredImageNet":
             novel_loader = datamgr.get_data_loader(aug=False, train=False)
         else:
             novel_loader = datamgr.get_data_loader(aug=False)

@@ -31,6 +31,11 @@ python ./finetune.py --dataset none --model ResNet10 --method baseline --track_b
 python ./finetune.py --dataset none --model ResNet10 --method baseline --track_bn \
 --finetune_parts full --dataset_names miniImageNet --n_shot 5
 
+# NIL-testing
+python ./nil_testing.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
+--pretrain_type 3 --aug_mode strong --n_shot 5 --dataset_names ISIC --startup_split
+
+
 ##### Fine-tuning from pre-trained models #####
 python ./finetune.py --dataset miniImageNet --model ResNet10 --method baseline --track_bn \
 --pretrain_type 1 --aug_mode base --finetune_parts head --n_shot 1 \
