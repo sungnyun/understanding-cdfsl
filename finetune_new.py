@@ -184,7 +184,7 @@ def main():
         print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
 
     fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
-    print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes)))
+    print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
 
     print('Saved history to:')
     print(train_history_path)
