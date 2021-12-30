@@ -162,8 +162,11 @@ def get_init_file(checkpoint_dir):
     init_file = os.path.join(checkpoint_dir, 'initial.tar')
     return init_file
 
-def get_assigned_file(checkpoint_dir, num):
-    assign_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(num))
+def get_assigned_file(checkpoint_dir, num, dataset_name=None):
+    if dataset_name is None:
+        assign_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(num))
+    else:
+        assign_file = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, num))
     return assign_file
 
 def get_resume_file(checkpoint_dir, dataset_name=None):
