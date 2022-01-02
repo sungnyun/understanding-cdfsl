@@ -64,6 +64,11 @@ def get_output_directory(params: Namespace, previous_step=False, makedirs=True):
     return path
 
 
+def get_pretrain_history_path(output_directory):
+    basename = 'pretrain_history.csv'
+    return os.path.join(output_directory, basename)
+
+
 def get_pretrain_state_path(output_directory, epoch=0):
     """
     :param output_directory:

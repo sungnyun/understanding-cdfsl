@@ -2,6 +2,7 @@ import json
 import os
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.optim
 from tqdm import tqdm
@@ -10,7 +11,8 @@ from backbone import get_backbone_class
 from datasets.dataloader import get_dataloader, get_unlabeled_dataloader
 from io_utils import parse_args
 from model import get_model_class
-from paths import get_output_directory, get_final_pretrain_state_path, get_pretrain_state_path, get_pretrain_params_path
+from paths import get_output_directory, get_final_pretrain_state_path, get_pretrain_state_path, \
+    get_pretrain_params_path, get_pretrain_history_path
 
 
 def _get_dataloaders(params):
@@ -55,7 +57,9 @@ def main():
     params_path = get_pretrain_params_path(output_dir)
     with open(params_path, 'w') as f:
         json.dump(vars(params), f, indent=4)
+    pretrain_history_path = get_pretrain_history_path(output_dir)
     print('Saving pretrain params to {}'.format(params_path))
+    print('Saving pretrain history to {}'.format(pretrain_history_path))
 
     if params.pls:
         # Load previous pre-trained weights for second-step pre-training
@@ -87,10 +91,18 @@ def main():
                                                      milestones=[400, 600, 800],
                                                      gamma=0.1)
 
+    pretrain_history = {
+        'loss': [0] * params.epochs,
+        'source_loss': [0] * params.epochs,
+        'target_loss': [0] * params.epochs,
+    }
+
     for epoch in range(params.epochs):
         print('EPOCH {}'.format(epoch).center(40).center(80, '#'))
 
         epoch_loss = 0
+        epoch_source_loss = 0
+        epoch_target_loss = 0
         steps = 0
 
         if epoch == 0:
@@ -107,6 +119,7 @@ def main():
                 optimizer.step()
 
                 epoch_loss += loss.item()
+                epoch_source_loss += loss.item()
                 steps += 1
         elif not params.ls and params.us and not params.ut:  # only us (type 2)
             for x, _ in tqdm(unlabeled_source_loader):
@@ -116,11 +129,13 @@ def main():
                 optimizer.step()
 
                 epoch_loss += loss.item()
+                epoch_source_loss += loss.item()
                 steps += 1
         elif params.ut:  # ut (epoch is based on unlabeled target)
             for x, _ in tqdm(unlabeled_target_loader):
                 optimizer.zero_grad()
                 target_loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
+                epoch_target_loss += target_loss.item()
                 source_loss = None
                 if params.ls:  # type 4, 7
                     try:
@@ -129,6 +144,7 @@ def main():
                         labeled_source_loader_iter = iter(labeled_source_loader)
                         sx, sy = labeled_source_loader_iter.next()
                     source_loss = model.compute_cls_loss_and_accuracy(sx.cuda(), sy.cuda())[0]  # LS loss
+                    epoch_source_loss += source_loss.item()
                 if params.us:  # type 5, 8
                     try:
                         sx, sy = unlabeled_source_loader_iter.next()
@@ -136,6 +152,7 @@ def main():
                         unlabeled_source_loader_iter = iter(unlabeled_source_loader)
                         sx, sy = unlabeled_source_loader_iter.next()
                     source_loss = model.compute_ssl_loss(sx[0].cuda(), sx[1].cuda())  # US loss
+                    epoch_source_loss += source_loss.item()
 
                 if source_loss:
                     loss = source_loss * params.gamma + target_loss * (1 - params.gamma)
@@ -152,7 +169,18 @@ def main():
         if scheduler is not None:
             scheduler.step()
 
-        print('Epoch {:04d}: loss={:6.4f}'.format(epoch, epoch_loss / steps))
+        mean_loss = epoch_loss / steps
+        mean_source_loss = epoch_source_loss / steps
+        mean_target_loss = epoch_target_loss / steps
+        fmt = 'Epoch {:04d}: loss={:6.4f} source_loss={:6.4f} target_loss={:6.4f}'
+        print(fmt.format(epoch, mean_loss, mean_source_loss, mean_target_loss))
+
+        pretrain_history['loss'][epoch] = mean_loss
+        pretrain_history['source_loss'][epoch] = mean_source_loss
+        pretrain_history['target_loss'][epoch] = mean_target_loss
+
+        pd.DataFrame(pretrain_history).to_csv(pretrain_history_path)
+
         epoch += 1
         if epoch % params.model_save_interval == 0 or epoch == params.epochs:
             state_path = get_pretrain_state_path(output_dir, epoch=epoch)
