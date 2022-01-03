@@ -21,23 +21,40 @@ from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_sh
 
 
 class MoCo(nn.Module):
-    def __init__(self, backbone, num_class, base_encoder=BaselineTrain, dim=128, K=1024, m=0.999, T=0.07):
+    def __init__(self, params, num_class, base_encoder=BaselineTrain, dim=128, K=1024, m=0.999, T=1.0, mlp=False):
         super(MoCo, self).__init__()
         self.K = K
         self.m = m
         self.T = T
 
-        self.encoder_q = base_encoder(backbone, num_class, loss_type='softmax')
-        self.encoder_k = base_encoder(backbone, num_class, loss_type='softmax')
-        self.projector_q = nn.Linear(self.encoder_q.feature.final_feat_dim, dim)
-        self.projector_k = nn.Linear(self.encoder_k.feature.final_feat_dim, dim)
+        if params.model == 'ResNet10':
+            backbone1 = backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)
+            backbone2 = backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)
+        elif params.model == 'ResNet18-84':
+            backbone1 = backbone.ResNet18_84x84(track_bn=params.track_bn)
+            backbone2 = backbone.ResNet18_84x84(track_bn=params.track_bn)
+        elif params.model == 'ResNet18':
+            backbone1 = backbone.ResNet18(track_bn=params.track_bn)
+            backbone2 = backbone.ResNet18(track_bn=params.track_bn)
+        else:
+            raise ValueError('Invalid `model` argument: {}'.format(params.model))
+
+        self.encoder_q = BaselineTrain(backbone1, num_class, loss_type='softmax')
+        self.encoder_k = BaselineTrain(backbone2, num_class, loss_type='softmax')
+        if not mlp:
+            self.projector_q = nn.Linear(self.encoder_q.feature.final_feat_dim, dim)
+            self.projector_k = nn.Linear(self.encoder_k.feature.final_feat_dim, dim)
+        else:
+            mlp_dim = self.encoder_q.feature.final_feat_dim
+            self.projector_q = nn.Sequential(nn.Linear(mlp_dim, mlp_dim), nn.ReLU(), nn.Linear(mlp_dim, dim))
+            self.projector_k = nn.Sequential(nn.Linear(mlp_dim, mlp_dim), nn.ReLU(), nn.Linear(mlp_dim, dim))
 
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data.copy_(param_q.data)
             param_k.requires_grad = False
-        for param_q, param_k in zip(self.projector_q.parameters(), self.projector_k.parameters()):
-            param_k.data.copy_(param_q.data)
-            param_k.requires_grad = False
+        for param_q_, param_k_ in zip(self.projector_q.parameters(), self.projector_k.parameters()):
+            param_k_.data.copy_(param_q_.data)
+            param_k_.requires_grad = False
 
         self.register_buffer("queue", torch.randn(dim, K))
         self.queue = F.normalize(self.queue, dim=0)
@@ -50,8 +67,8 @@ class MoCo(nn.Module):
         """
         for param_q, param_k in zip(self.encoder_q.parameters(), self.encoder_k.parameters()):
             param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)        
-        for param_q, param_k in zip(self.projector_q.parameters(), self.projector_k.parameters()):
-            param_k.data = param_k.data * self.m + param_q.data * (1. - self.m)        
+        for param_q_, param_k_ in zip(self.projector_q.parameters(), self.projector_k.parameters()):
+            param_k_.data = param_k_.data * self.m + param_q_.data * (1. - self.m)        
 
     @torch.no_grad()
     def _dequeue_and_enqueue(self, keys):
@@ -149,7 +166,7 @@ def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
         unlabeled_source_loader_iter = iter(unlabeled_source_loader)
     
     optimizer = torch.optim.SGD(opt_params,
-            lr=0.1, momentum=0.9,
+            lr=0.01, momentum=0.9,
             weight_decay=1e-4,
             nesterov=False)
 
@@ -240,14 +257,7 @@ if __name__=='__main__':
     params = parse_args('train')
 
     ##################################################################
-    if params.model == 'ResNet10':
-        model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet18-84':
-        model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
-    elif params.model == 'ResNet18':
-        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
-    else:
-        raise ValueError('Invalid `model` argument: {}'.format(params.model))
+
 
     if params.dataset == 'miniImageNet':
         params.num_classes = 64
@@ -261,7 +271,7 @@ if __name__=='__main__':
         raise ValueError('Invalid `dataset` argument: {}'.format(params.dataset))
 
     if params.method == 'baseline':
-        model = MoCo(model_dict[params.model], num_class=params.num_classes)
+        model = MoCo(params, num_class=params.num_classes, mlp=False)
     else:
         raise ValueError('Invalid `method` argument: {}'.format(params.method))
 
