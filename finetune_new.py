@@ -15,8 +15,7 @@ from paths import get_output_directory, get_ft_output_directory, get_ft_train_hi
 from utils import *
 
 
-def main():
-    params = parse_args('train')
+def main(params):
     base_output_dir = get_output_directory(params)
     output_dir = get_ft_output_directory(params)
     print('Running fine-tune with output folder:')
@@ -195,4 +194,16 @@ def main():
 
 if __name__ == '__main__':
     np.random.seed(10)
-    main()
+    params = parse_args('train')
+
+    targets = params.target_dataset
+    if targets is None:
+        targets = [targets]
+    elif len(targets) > 1:
+        print('#' * 80)
+        print("Running finetune iteratively for multiple target datasets: {}".format(targets))
+        print('#' * 80)
+
+    for target in targets:
+        params.target_dataset = target
+        main(params)

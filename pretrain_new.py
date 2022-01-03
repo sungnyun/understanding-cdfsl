@@ -46,9 +46,7 @@ def _get_dataloaders(params):
     return ls, us, ut
 
 
-def main():
-    params = parse_args('pretrain')
-
+def main(params):
     backbone = get_backbone_class(params.backbone)()
     model = get_model_class(params.model)(backbone, params)
     output_dir = get_output_directory(params)
@@ -191,4 +189,16 @@ def main():
 
 if __name__ == '__main__':
     np.random.seed(10)
-    main()
+    params = parse_args('pretrain')
+
+    targets = params.target_dataset
+    if targets is None:
+        targets = [targets]
+    elif len(targets) > 1:
+        print('#' * 80)
+        print("Running pretrain iteratively for multiple target datasets: {}".format(targets))
+        print('#' * 80)
+
+    for target in targets:
+        params.target_dataset = target
+        main(params)

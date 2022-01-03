@@ -19,7 +19,7 @@ def parse_args(mode):
 
     # New parameters
     parser.add_argument('--source_dataset', default='miniImageNet')  # replaces dataset
-    parser.add_argument('--target_dataset')  # replaces dataset_names
+    parser.add_argument('--target_dataset', type=str, nargs='+')  # replaces dataset_names / HOTFIX: changed to list to allow for multiple targets with one CLI command
     parser.add_argument('--backbone', default='resnet10', help='Refer to backbone._backbone_class_map')  # replaces model
     # parser.add_argument('--model', default='base', help='Refer to model.model_class_map')  # similar to method
 
