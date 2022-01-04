@@ -105,7 +105,7 @@ def get_ft_output_directory(params, makedirs=True):
     path = get_output_directory(params, makedirs=makedirs)
     if not params.ut:
         path = os.path.join(path, params.target_dataset)
-    ft_basename = '{:02d}way_{:03d}shot_{}'.format(params.n_way, params.n_shot, params.ft_tag)
+    ft_basename = '{:02d}way_{:03d}shot_{}_{}'.format(params.n_way, params.n_shot, params.ft_parts, params.ft_tag)
     path = os.path.join(path, ft_basename)
 
     if makedirs:
