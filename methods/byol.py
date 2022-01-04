@@ -236,7 +236,7 @@ class BYOL(nn.Module):
         assert not (self.training and x1.shape[0] == 1), 'you must have greater than 1 sample when training, due to the batchnorm in the projection layer'
 
         if return_embedding:
-            return self.online_encoder(torhch.cat([x1, x2], 0), return_projection = return_projection)
+            return self.online_encoder(torch.cat([x1, x2], 0), return_projection = return_projection)
 
         # image_one, image_two = self.augment1(x), self.augment2(x)
 
