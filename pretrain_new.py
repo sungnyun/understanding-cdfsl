@@ -109,28 +109,36 @@ def main(params):
             print(state_path)
             torch.save(model.state_dict(), state_path)
 
+        model.on_epoch_start()
+        model.train()
+
         if params.ls and not params.us and not params.ut:  # only ls (type 1)
             for x, y in tqdm(labeled_source_loader):
+                model.on_step_start()
                 optimizer.zero_grad()
                 loss, _ = model.compute_cls_loss_and_accuracy(x.cuda(), y.cuda())
                 loss.backward()
                 optimizer.step()
+                model.on_step_end()
 
                 epoch_loss += loss.item()
                 epoch_source_loss += loss.item()
                 steps += 1
         elif not params.ls and params.us and not params.ut:  # only us (type 2)
             for x, _ in tqdm(unlabeled_source_loader):
+                model.on_step_start()
                 optimizer.zero_grad()
                 loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())
                 loss.backward()
                 optimizer.step()
+                model.on_step_end()
 
                 epoch_loss += loss.item()
                 epoch_source_loss += loss.item()
                 steps += 1
         elif params.ut:  # ut (epoch is based on unlabeled target)
             for x, _ in tqdm(unlabeled_target_loader):
+                model.on_step_start()
                 optimizer.zero_grad()
                 target_loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
                 epoch_target_loss += target_loss.item()
@@ -158,6 +166,7 @@ def main(params):
                     loss = target_loss
                 loss.backward()
                 optimizer.step()
+                model.on_step_end()
 
                 epoch_loss += loss.item()
                 steps += 1
@@ -166,6 +175,7 @@ def main(params):
 
         if scheduler is not None:
             scheduler.step()
+        model.on_epoch_end()
 
         mean_loss = epoch_loss / steps
         mean_source_loss = epoch_source_loss / steps

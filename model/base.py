@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from argparse import Namespace
-from typing import Tuple, Union
+from typing import Tuple
 
 import torch
 from torch import nn
@@ -45,6 +45,18 @@ class BaseModel(nn.Module):
             return self.cls_loss_function(scores, y), accuracy, predicted
         else:
             return self.cls_loss_function(scores, y), accuracy
+
+    def on_step_start(self):
+        pass
+
+    def on_step_end(self):
+        pass
+
+    def on_epoch_start(self):
+        pass
+
+    def on_epoch_end(self):
+        pass
 
 
 class BaseSelfSupervisedModel(BaseModel):
