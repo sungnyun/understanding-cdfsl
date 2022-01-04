@@ -9,6 +9,7 @@ DATASET_KEYS = {
     'miniImageNet': 'mini',
     'miniImageNet_test': 'mini_test',
     'tieredImageNet': 'tiered',
+    'tieredImageNet_test': 'tiered_test',
     'CropDisease': 'crop',
     'EuroSAT': 'euro',
     'ISIC': 'isic',
