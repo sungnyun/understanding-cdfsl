@@ -1,9 +1,15 @@
 from model.base import BaseModel
+from model.byol import BYOL
+from model.moco import MoCo
 from model.simclr import SimCLR
+from model.simsiam import SimSiam
 
 _model_class_map = {
     'base': BaseModel,
     'simclr': SimCLR,
+    'byol': BYOL,
+    'moco': MoCo,
+    'simsiam': SimSiam,
 }
 
 
