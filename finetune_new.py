@@ -1,4 +1,5 @@
 import copy
+import json
 import math
 import os
 
@@ -11,7 +12,7 @@ from io_utils import parse_args
 from model import get_model_class
 from model.classifier_head import get_classifier_head_class
 from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
-    get_final_pretrain_state_path, get_pretrain_state_path
+    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
 from utils import *
 
 
@@ -58,13 +59,19 @@ def main(params):
     support_iterator = iter(support_loader)
     support_batches = math.ceil(w * s / bs)
 
-    # Logging
+    # Output (history, params)
+    train_history_path = get_ft_train_history_path(output_dir)
+    test_history_path = get_ft_test_history_path(output_dir)
+    params_path = get_ft_params_path(output_dir)
+    print('Saving finetune params to {}'.format(params_path))
+    print('Saving finetune train history to {}'.format(train_history_path))
+    print('Saving finetune validation history to {}'.format(train_history_path))
+    with open(params_path, 'w') as f:
+        json.dump(vars(params), f, indent=4)
     df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                             columns=['epoch{}'.format(e + 1) for e in range(params.ft_epochs)])
     df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
                            columns=['epoch{}'.format(e + 1) for e in range(params.ft_epochs)])
-    train_history_path = get_ft_train_history_path(output_dir)
-    test_history_path = get_ft_test_history_path(output_dir)
 
     # Pre-train state
     if params.ft_pretrain_epoch is None:
