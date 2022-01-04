@@ -10,12 +10,9 @@ from datasets.sampler import EpisodicBatchSampler
 from datasets.split import split_dataset
 from datasets.transforms import get_composed_transform
 
-DEFAULT_IMAGE_SIZE = 224
-DEFAULT_IMAGE_SIZE_OVERRIDES = {
-    'tieredImageNet': 84
-}
-
 _unlabeled_dataset_cache: MutableMapping[Tuple[str, str, int, bool, int], Dataset] = WeakValueDictionary()
+
+DEFAULT_IMAGE_SIZE = 224
 
 
 class ToSiamese:
@@ -36,13 +33,6 @@ class ToSiamese:
         return self.transform(img), self.transform2(img)
 
 
-def _get_default_image_size(dataset_name, verbose=True):
-    image_size = DEFAULT_IMAGE_SIZE_OVERRIDES.get(dataset_name, DEFAULT_IMAGE_SIZE)
-    if verbose:
-        print('Using default image size {} for dataset {}'.format(image_size, dataset_name))
-    return image_size
-
-
 def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = None, siamese=False,
                         force_tiered_augmentation=False):
     """
@@ -54,7 +44,8 @@ def get_default_dataset(dataset_name: str, augmentation: str, image_size: int = 
         print('Disabling augmentation for tieredImageNet as per literature.')
         augmentation = None
     if image_size is None:
-        image_size = _get_default_image_size(dataset_name)
+        print('Using default image size: {}'.format(DEFAULT_IMAGE_SIZE))
+        image_size = DEFAULT_IMAGE_SIZE
 
     try:
         dataset_cls = dataset_class_map[dataset_name]
