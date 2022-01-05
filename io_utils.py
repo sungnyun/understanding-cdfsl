@@ -50,6 +50,7 @@ def parse_args(mode):
     # You must specify pretrain_key to differentiate models with different non-identifying parameters)
     parser.add_argument('--augmentation', default='strong', type=str, help="Augmentation used for pre-training {'base', 'strong'}")  # similar to aug_mode
     parser.add_argument('--batch_size', default=64, type=int, help='Batch size for pre-training.')  # similar to aug_mode
+    parser.add_argument('--lr', default=None, type=float, help='LR for pre-training.')
     parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for {LS,US} + UT.')  # similar to aug_mode
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
@@ -153,6 +154,17 @@ def parse_args(mode):
             params.optimizer = 'adam'
         else:
             params.optimizer = 'sgd'
+        print("Using default optimizer for model {}: {}".format(params.model, params.optimizer))
+
+    # Default learning rate
+    if params.lr is None:
+        if params.model in ['simsiam', 'byol']:
+            params.lr = 3e-4
+        elif params.model in ['moco']:
+            params.lr = 0.01
+        else:
+            params.lr = 0.1
+        print("Using default lr for model {}: {}".format(params.model, params.lr))
 
     params.ft_train_body = params.ft_parts in ['body', 'full']
     params.ft_train_head = params.ft_parts in ['head', 'full']

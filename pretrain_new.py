@@ -77,11 +77,11 @@ def main(params):
 
     if params.optimizer == 'sgd':
         optimizer = torch.optim.SGD(model.parameters(),
-                                    lr=0.1, momentum=0.9,
+                                    lr=params.lr, momentum=0.9,
                                     weight_decay=1e-4,
                                     nesterov=False)
     elif params.optimizer == 'adam':
-        optimizer = torch.optim.Adam(model.parameters(), lr=3e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     else:
         raise ValueError('Invalid value for params.optimizer: {}'.format(params.optimizer))
 
