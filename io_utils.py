@@ -132,6 +132,8 @@ def parse_args(mode):
         raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
     if params.ut and not params.target_dataset:
         raise AssertionError('Invalid parameter combination')
+    if params.ft_parts not in ["head", "body", None, "None"]:
+        raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
 
     # Assign num_classes
     if params.dataset == 'miniImageNet':
