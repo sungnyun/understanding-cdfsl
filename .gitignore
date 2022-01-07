@@ -1,4 +1,6 @@
 .idea
+*.pt
+*.json
 
 # user-defined files
 *.log
