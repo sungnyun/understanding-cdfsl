@@ -7,7 +7,7 @@ import backbone
 def parse_args(mode):
     parser = argparse.ArgumentParser(description='CD-FSL ({} mode)'.format(mode))
     parser.add_argument('--dataset'     , default='miniImageNet',        help='training base model')
-    parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture')
+    parser.add_argument('--model'       , default='ResNet10',      help='backbone architecture')  # refers to (ssl) method in new modules
     parser.add_argument('--method'      , default='baseline',   help='baseline/protonet/maml')
     parser.add_argument('--train_n_way' , default=5, type=int,  help='class num to classify for training')
     parser.add_argument('--test_n_way'  , default=5, type=int,  help='class num to classify for testing (validation) ')
@@ -47,7 +47,7 @@ def parse_args(mode):
     """
 
     # Pre-train params (non-identifying, i.e., does not affect output directory)
-    # You must specify pretrain_key to differentiate models with different non-identifying parameters)
+    # You must specify --tag to differentiate models with different non-identifying parameters)
     parser.add_argument('--augmentation', default='strong', type=str, help="Augmentation used for pre-training {'base', 'strong'}")  # similar to aug_mode
     parser.add_argument('--batch_size', default=64, type=int, help='Batch size for pre-training.')  # similar to aug_mode
     parser.add_argument('--lr', default=None, type=float, help='LR for pre-training.')
