@@ -61,16 +61,16 @@ def main(params):
 
     if params.pls:
         # Load previous pre-trained weights for second-step pre-training
-        previous_output_dir = get_output_directory(params, previous_step=True)
-        state_path = get_final_pretrain_state_path(previous_output_dir)
-        if not os.path.exists(state_path):
-            raise Exception('Pre-train state path not found: {}'.format(state_path))
+        previous_base_output_dir = get_output_directory(params, pls_previous=True)
+        state_path = get_final_pretrain_state_path(previous_base_output_dir)
         print('Loading previous state for second-step pre-training:')
         print(state_path)
 
         # Note, override model.load_state_dict to change this behavior.
         state = torch.load(state_path)
-        model.load_state_dict(state, strict=True)
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if len(unexpected):
+            raise Exception("Unexpected keys from previous state: {}".format(unexpected))
 
     model.train()
     model.cuda()

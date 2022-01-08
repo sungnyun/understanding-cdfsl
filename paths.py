@@ -31,20 +31,26 @@ MODEL_KEYS = {
 }
 
 
-def get_output_directory(params: Namespace, previous_step=False, makedirs=True):
+def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
+    """
+    :param params:
+    :param pls_previous: get previous output directory for pls mode
+    :return:
+    """
+    if pls_previous and not params.pls:
+        raise Exception('Should not get pls_previous when params.pls is False')
+
     path = configs.save_dir
     path = os.path.join(path, 'output')
     path = os.path.join(path, DATASET_KEYS[params.source_dataset])
 
     pretrain_specifiers = []
     pretrain_specifiers.append(BACKBONE_KEYS[params.backbone])
-    pretrain_specifiers.append(MODEL_KEYS[params.model])
-    if previous_step:
-        if params.pls:
-            pretrain_specifiers.append('LS')
-        else:
-            raise Exception('Should not fetch previous_step when params.pls is False')
+    if pls_previous:
+        pretrain_specifiers.append(MODEL_KEYS['base'])
+        pretrain_specifiers.append('LS')
     else:
+        pretrain_specifiers.append(MODEL_KEYS[params.model])
         if params.pls:
             pretrain_specifiers.append('PLS')
         if params.ls:
@@ -56,7 +62,7 @@ def get_output_directory(params: Namespace, previous_step=False, makedirs=True):
     pretrain_specifiers.append(params.tag)
     path = os.path.join(path, '_'.join(pretrain_specifiers))
 
-    if params.ut:
+    if params.ut and not (pls_previous):
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
 
     if makedirs:
