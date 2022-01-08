@@ -18,3 +18,16 @@ done
 for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
   python ./pretrain_new.py --us --ut --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr
 done
+
+## PLS pretrain (note 1, should use --model base for ls pretrain) (note 2, should use same --tag for ls and pls)
+python ./pretrain_new.py --ls --source_dataset miniImageNet --backbone resnet10 --model base
+
+## Type 6
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./pretrain_new.py --pls --ls --ut --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr
+done
+
+# Type 7
+for TARGET in "miniImageNet_test" "CropDisease" "EuroSAT" "ISIC" "ChestX"; do
+  python ./pretrain_new.py --pls --us --ut --source_dataset miniImageNet --target_dataset $TARGET --backbone resnet10 --model simclr
+done

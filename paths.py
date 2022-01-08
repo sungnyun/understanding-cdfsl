@@ -62,7 +62,7 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
     pretrain_specifiers.append(params.tag)
     path = os.path.join(path, '_'.join(pretrain_specifiers))
 
-    if params.ut and not (pls_previous):
+    if params.ut and not pls_previous:
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
 
     if makedirs:
