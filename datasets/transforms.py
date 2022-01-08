@@ -38,7 +38,7 @@ def get_composed_transform(augmentation: str = None, image_size=224) -> transfor
     elif augmentation == 'strong':
         transform_list = ['RandomResizedCrop', 'RandomColorJitter', 'RandomGrayscale', 'RandomGaussianBlur',
                           'RandomHorizontalFlip', 'ToTensor', 'Normalize']
-    elif augmentation is None:
+    elif augmentation is None or augmentation.lower() == 'none':
         transform_list = ['Resize', 'ToTensor', 'Normalize']
     else:
         raise ValueError('Unsupported augmentation: {}'.format(augmentation))
