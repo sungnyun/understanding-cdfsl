@@ -34,6 +34,7 @@ def parse_args(mode):
     parser.add_argument('--us', action='store_true', help='Use unlabeled source data for pre-training')
     parser.add_argument('--ut', action='store_true', help='Use unlabeled target data for pre-training')
     parser.add_argument('--tag', default='default', type=str, help='Tag used to differentiate output directories for pre-trained models')  # similar to aug_mode
+    parser.add_argument('--pls_tag', default=None, type=str, help='Tag of pre-trained previous model (LS type) used for pls. Uses --tag by default.')
 
     """
     Type 1: --ls
@@ -168,6 +169,9 @@ def parse_args(mode):
 
     params.ft_train_body = params.ft_parts in ['body', 'full']
     params.ft_train_head = params.ft_parts in ['head', 'full']
+
+    if params.pls_tag is None:
+        params.pls_tag = params.pls
 
     return params
 

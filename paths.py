@@ -14,6 +14,10 @@ DATASET_KEYS = {
     'EuroSAT': 'euro',
     'ISIC': 'isic',
     'ChestX': 'chest',
+    'cars': 'cars',
+    'cub': 'cub',
+    'places': 'places',
+    'plantae': 'plantae',
 }
 
 BACKBONE_KEYS = {
@@ -49,6 +53,7 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
     if pls_previous:
         pretrain_specifiers.append(MODEL_KEYS['base'])
         pretrain_specifiers.append('LS')
+        pretrain_specifiers.append(params.pls_tag)
     else:
         pretrain_specifiers.append(MODEL_KEYS[params.model])
         if params.pls:
@@ -59,7 +64,7 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
             pretrain_specifiers.append('US')
         if params.ut:
             pretrain_specifiers.append('UT')
-    pretrain_specifiers.append(params.tag)
+        pretrain_specifiers.append(params.tag)
     path = os.path.join(path, '_'.join(pretrain_specifiers))
 
     if params.ut and not pls_previous:
