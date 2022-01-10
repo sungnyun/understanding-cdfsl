@@ -128,6 +128,34 @@ class ChestXDataset(ImageFolder):
     _find_classes = find_classes  # compatibility with earlier versions
 
 
+class CarsDataset(ImageFolder):
+    name = "cars"
+
+    def __init__(self, root=cars_path, *args, **kwargs):
+        super().__init__(root=root, *args, **kwargs)
+
+
+class CUBDataset(ImageFolder):
+    name = "cub"
+
+    def __init__(self, root=cub_path, *args, **kwargs):
+        super().__init__(root=root, *args, **kwargs)
+
+
+class PlacesDataset(ImageFolder):
+    name = "places"
+
+    def __init__(self, root=places_path, *args, **kwargs):
+        super().__init__(root=root, *args, **kwargs)
+
+
+class PlantaeDataset(ImageFolder):
+    name = "plantae"
+
+    def __init__(self, root=plantae_path, *args, **kwargs):
+        super().__init__(root=root, *args, **kwargs)
+
+
 dataset_classes = [
     MiniImageNetDataset,
     MiniImageNetTestDataset,
@@ -137,6 +165,10 @@ dataset_classes = [
     EuroSATDataset,
     ISICDataset,
     ChestXDataset,
+    CarsDataset,
+    CUBDataset,
+    PlacesDataset,
+    PlantaeDataset,
 ]
 
 dataset_class_map = {
