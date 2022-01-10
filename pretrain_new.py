@@ -161,7 +161,7 @@ def main(params):
                     epoch_source_loss += source_loss.item()
 
                 if source_loss:
-                    loss = source_loss * params.gamma + target_loss * (1 - params.gamma)
+                    loss = source_loss * (1 - params.gamma) + target_loss * params.gamma
                 else:
                     loss = target_loss
                 loss.backward()
