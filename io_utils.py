@@ -184,7 +184,7 @@ def parse_args(mode):
     params.ft_train_head = params.ft_parts in ['head', 'full']
 
     if params.pls_tag is None:
-        params.pls_tag = params.pls
+        params.pls_tag = params.tag
 
     return params
 
