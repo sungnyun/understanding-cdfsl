@@ -2,12 +2,22 @@ import copy
 import os
 from typing import List, Tuple
 
-import numpy as np
 import pandas as pd
 from numpy.random import RandomState
 from torchvision.datasets import ImageFolder
 
 DIRNAME = os.path.dirname(os.path.abspath(__file__))
+
+DATASETS_WITH_DEFAULT_SPLITS = [
+    "miniImageNet",
+    "miniImageNet_test",
+    "tieredImageNet",
+    "tieredImageNet_test",
+    "CropDisease",
+    "EuroSAT",
+    "ISIC",
+    "ChestX",
+]
 
 
 def split_dataset(dataset: ImageFolder, ratio=20, seed=1):
@@ -23,7 +33,7 @@ def split_dataset(dataset: ImageFolder, ratio=20, seed=1):
     unlabeled_path = _get_split_path(dataset, ratio, seed, True)
     labeled_path = _get_split_path(dataset, ratio, seed, False)
     for path in [unlabeled_path, labeled_path]:
-        if ratio == 20 and seed == 1 and not os.path.exists(path):
+        if ratio == 20 and seed == 1 and dataset.name in DATASETS_WITH_DEFAULT_SPLITS and not os.path.exists(path):
             raise Exception("Default split file missing: {}".format(path))
 
     if os.path.exists(unlabeled_path) and os.path.exists(labeled_path):
