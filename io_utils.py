@@ -149,6 +149,18 @@ def parse_args(mode):
     else:
         raise ValueError('Invalid `dataset` argument: {}'.format(params.dataset))
 
+    # Assign num_classes (*_new)
+    if params.source_dataset == 'miniImageNet':
+        params.num_classes = 64
+    elif params.source_dataset == 'tieredImageNet':
+        params.num_classes = 351
+    elif params.source_dataset == 'ImageNet':
+        params.num_classes = 1000
+    elif params.source_dataset == 'none':
+        params.num_classes = 5
+    else:
+        raise ValueError('Invalid `source_dataset` argument: {}'.format(params.source_dataset))
+
     # Default optimizers
     if params.optimizer is None:
         if params.model in ['simsiam', 'byol']:
