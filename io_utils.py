@@ -56,6 +56,7 @@ def parse_args(mode):
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
+    parser.add_argument('--num_workers', default=2, type=int)
 
     # New ft params
     parser.add_argument('--n_way', default=5, type=int)

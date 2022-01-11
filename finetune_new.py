@@ -47,10 +47,13 @@ def main(params):
                                                      n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
                                                      augmentation=params.ft_augmentation,
                                                      unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
                                                      split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
     query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
                                                    n_query_shot=q, n_episodes=n_episodes, augmentation=None,
-                                                   unlabeled_ratio=params.unlabeled_ratio, split_seed=params.split_seed,
+                                                   unlabeled_ratio=params.unlabeled_ratio,
+                                                   num_workers=params.num_workers,
+                                                   split_seed=params.split_seed,
                                                    episode_seed=params.ft_episode_seed)
     assert (len(query_loader) == n_episodes)
     assert (len(support_loader) == n_episodes * support_epochs)

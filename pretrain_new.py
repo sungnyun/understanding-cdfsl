@@ -29,18 +29,18 @@ def _get_dataloaders(params):
     if params.ls:
         print('Using source data {} (labeled)'.format(params.source_dataset))
         ls = get_dataloader(dataset_name=params.source_dataset, augmentation=params.augmentation,
-                            batch_size=labeled_source_bs)
+                            batch_size=labeled_source_bs, num_workers=params.num_workers)
 
     if params.us:
         print('Using source data {} (unlabeled)'.format(params.source_dataset))
         us = get_dataloader(dataset_name=params.source_dataset, augmentation=params.augmentation,
-                            batch_size=unlabeled_source_bs,
+                            batch_size=unlabeled_source_bs, num_workers=params.num_workers,
                             siamese=True)  # important
 
     if params.ut:
         print('Using target data {} (unlabeled)'.format(params.target_dataset))
         ut = get_unlabeled_dataloader(dataset_name=params.target_dataset, augmentation=params.augmentation,
-                                      batch_size=unlabeled_target_bs, siamese=True,
+                                      batch_size=unlabeled_target_bs, num_workers=params.num_workers, siamese=True,
                                       unlabeled_ratio=params.unlabeled_ratio)
 
     return ls, us, ut
