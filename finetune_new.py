@@ -98,106 +98,111 @@ def main(params):
     print()
 
     for episode in range(n_episodes):
+        # Reset models for each episode
+        # classifier.bias issue
+        body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
+        head = get_classifier_head_class(params.ft_head)(body.final_feat_dim, params.n_way,
+                                                         params)  # TODO: apply ft_features
+        body.cuda()
+        head.cuda()
+
+        opt_params = []
+        if params.ft_train_head:
+            opt_params.append({'params': head.parameters()})
+        if params.ft_train_body:
+            opt_params.append({'params': body.parameters()})
+        optimizer = torch.optim.SGD(opt_params, lr=1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+
+        # Labels are always [0, 0, ..., 1, ..., w-1]
+        x_support = None
+        f_support = None
+        y_support = torch.arange(w).repeat_interleave(s).cuda()
         try:  # HOTFIX TO GET CAR RESULTS
-            # Reset models for each episode
-            # classifier.bias issue
-            body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
-            head = get_classifier_head_class(params.ft_head)(body.final_feat_dim, params.n_way,
-                                                             params)  # TODO: apply ft_features
-            body.cuda()
-            head.cuda()
-
-            opt_params = []
-            if params.ft_train_head:
-                opt_params.append({'params': head.parameters()})
-            if params.ft_train_body:
-                opt_params.append({'params': body.parameters()})
-            optimizer = torch.optim.SGD(opt_params, lr=1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-
-            # Labels are always [0, 0, ..., 1, ..., w-1]
-            x_support = None
-            f_support = None
-            y_support = torch.arange(w).repeat_interleave(s).cuda()
             x_query = next(query_iterator)[0].cuda()
-            f_query = None
-            y_query = torch.arange(w).repeat_interleave(q).cuda()
-
-            if use_fixed_features:  # load data and extract features once per episode
-                with torch.no_grad():
-                    x_support, _ = next(support_iterator)
-                    x_support = x_support.cuda()
-                    f_support = body.forward_features(x_support, params.ft_features)
-                    f_query = body.forward_features(x_query, params.ft_features)
-
-            train_acc_history = []
-            test_acc_history = []
-            for epoch in range(params.ft_epochs):
-                # Train
-                body.train()
-                head.train()
-                optimizer.zero_grad()
-
-                if not use_fixed_features:  # load data every epoch
-                    x_support, _ = next(support_iterator)
-                    x_support = x_support.cuda()
-
-                total_loss = 0
-                correct = 0
-                indices = np.random.permutation(w * s)
-                for i in range(support_batches):
-                    start_index = i * bs
-                    end_index = min(i * bs + bs, w * s)
-                    batch_indices = indices[start_index:end_index]
-                    y = y_support[batch_indices]
-
-                    if use_fixed_features:
-                        f = f_support[batch_indices]
-                    else:
-                        f = body.forward_features(x_support[batch_indices], params.ft_features)
-                    p = head(f)
-
-                    correct += torch.eq(y, p.argmax(dim=1)).sum()
-                    loss = loss_fn(p, y)
-                    loss.backward()
-                    optimizer.step()
-
-                    total_loss += loss.item()
-
-                train_loss = total_loss / support_batches
-                train_acc = correct / (w * s)
-
-                # Evaluation
-                body.eval()
-                head.eval()
-
-                if params.ft_intermediate_test or epoch == params.ft_epochs - 1:
-                    with torch.no_grad():
-                        if not use_fixed_features:
-                            f_query = body.forward_features(x_query, params.ft_features)
-                        p_query = head(f_query)
-                    test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
-                else:
-                    test_acc = torch.tensor(0)
-
-                print_epoch_logs = False
-                if print_epoch_logs and (epoch + 1) % 10 == 0:
-                    fmt = 'Epoch {:03d}: Loss={:6.3f} Train ACC={:6.3f} Test ACC={:6.3f}'
-                    print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
-
-                train_acc_history.append(train_acc.item())
-                test_acc_history.append(test_acc.item())
-
-            df_train.loc[episode + 1] = train_acc_history
-            df_train.to_csv(train_history_path)
-            df_test.loc[episode + 1] = test_acc_history
-            df_test.to_csv(test_history_path)
         except:
+            try:
+                next(support_iterator)
+            except:
+                pass
             warnings.warn("Error while generating few-shot episode {}. Ignoring episode.".format(episode))
             df_train.loc[episode + 1] = [float('nan')] * 100
             df_train.to_csv(train_history_path)
             df_test.loc[episode + 1] = [float('nan')] * 100
             df_test.to_csv(test_history_path)
+            continue
 
+        f_query = None
+        y_query = torch.arange(w).repeat_interleave(q).cuda()
+
+        if use_fixed_features:  # load data and extract features once per episode
+            with torch.no_grad():
+                x_support, _ = next(support_iterator)
+                x_support = x_support.cuda()
+                f_support = body.forward_features(x_support, params.ft_features)
+                f_query = body.forward_features(x_query, params.ft_features)
+
+        train_acc_history = []
+        test_acc_history = []
+        for epoch in range(params.ft_epochs):
+            # Train
+            body.train()
+            head.train()
+            optimizer.zero_grad()
+
+            if not use_fixed_features:  # load data every epoch
+                x_support, _ = next(support_iterator)
+                x_support = x_support.cuda()
+
+            total_loss = 0
+            correct = 0
+            indices = np.random.permutation(w * s)
+            for i in range(support_batches):
+                start_index = i * bs
+                end_index = min(i * bs + bs, w * s)
+                batch_indices = indices[start_index:end_index]
+                y = y_support[batch_indices]
+
+                if use_fixed_features:
+                    f = f_support[batch_indices]
+                else:
+                    f = body.forward_features(x_support[batch_indices], params.ft_features)
+                p = head(f)
+
+                correct += torch.eq(y, p.argmax(dim=1)).sum()
+                loss = loss_fn(p, y)
+                loss.backward()
+                optimizer.step()
+
+                total_loss += loss.item()
+
+            train_loss = total_loss / support_batches
+            train_acc = correct / (w * s)
+
+            # Evaluation
+            body.eval()
+            head.eval()
+
+            if params.ft_intermediate_test or epoch == params.ft_epochs - 1:
+                with torch.no_grad():
+                    if not use_fixed_features:
+                        f_query = body.forward_features(x_query, params.ft_features)
+                    p_query = head(f_query)
+                test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
+            else:
+                test_acc = torch.tensor(0)
+
+            print_epoch_logs = False
+            if print_epoch_logs and (epoch + 1) % 10 == 0:
+                fmt = 'Epoch {:03d}: Loss={:6.3f} Train ACC={:6.3f} Test ACC={:6.3f}'
+                print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
+
+            train_acc_history.append(train_acc.item())
+            test_acc_history.append(test_acc.item())
+
+        df_train.loc[episode + 1] = train_acc_history
+        df_train.to_csv(train_history_path)
+        df_test.loc[episode + 1] = test_acc_history
+        df_test.to_csv(test_history_path)
 
         fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
         print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
