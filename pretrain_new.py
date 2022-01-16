@@ -71,6 +71,9 @@ def main(params):
         missing, unexpected = model.load_state_dict(state, strict=False)
         if len(unexpected):
             raise Exception("Unexpected keys from previous state: {}".format(unexpected))
+    elif params.imagenet_pretrained:
+        print("Loading ImageNet pretrained weights")
+        backbone.load_imagenet_weights()
 
     model.train()
     model.cuda()
