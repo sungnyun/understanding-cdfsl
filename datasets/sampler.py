@@ -78,11 +78,8 @@ class EpisodicBatchSampler(Sampler):
 
     def __iter__(self):
         for i in range(self.n_episodes):
-            try:  # HOTFIX TO GET CAR RESULTS
-                support, query = self.episode_sampler[i]
-                indices = support if self.support else query
-                indices = indices.flatten()
-                for j in range(self.n_epochs):
-                    yield indices
-            except:
-                yield None
+            support, query = self.episode_sampler[i]
+            indices = support if self.support else query
+            indices = indices.flatten()
+            for j in range(self.n_epochs):
+                yield indices

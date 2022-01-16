@@ -117,19 +117,7 @@ def main(params):
         x_support = None
         f_support = None
         y_support = torch.arange(w).repeat_interleave(s).cuda()
-        try:  # HOTFIX TO GET CAR RESULTS
-            x_query = next(query_iterator)[0].cuda()
-        except:
-            try:
-                next(support_iterator)
-            except:
-                pass
-            warnings.warn("Error while generating few-shot episode {}. Ignoring episode.".format(episode))
-            df_train.loc[episode + 1] = [float('nan')] * 100
-            df_train.to_csv(train_history_path)
-            df_test.loc[episode + 1] = [float('nan')] * 100
-            df_test.to_csv(test_history_path)
-            continue
+        x_query = next(query_iterator)[0].cuda()
 
         f_query = None
         y_query = torch.arange(w).repeat_interleave(q).cuda()
