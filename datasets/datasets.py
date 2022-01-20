@@ -168,6 +168,7 @@ dataset_classes = [
     MiniImageNetTestDataset,
     TieredImageNetDataset,
     TieredImageNetTestDataset,
+    ImageNetDataset,
     CropDiseaseDataset,
     EuroSATDataset,
     ISICDataset,
