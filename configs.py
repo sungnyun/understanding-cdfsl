@@ -4,6 +4,7 @@ miniImageNet_path           	= '/data/cdfsl/miniImagenet'
 miniImageNet_test_path          = '/data/cdfsl/miniImagenet_test'
 tieredImageNet_path           	= '/data/cdfsl/tieredImagenet/train'
 tieredImageNet_test_path        = '/data/cdfsl/tieredImagenet/test'
+ImageNet_path                   = '/data/cdfsl/Imagenet/train'
 DTD_path 						= '/ssd/dtd/images/'
 
 ISIC_path = "/data/cdfsl/ISIC"

@@ -39,6 +39,13 @@ class TieredImageNetTestDataset(ImageFolder):
         super().__init__(root=root, *args, **kwargs)
 
 
+class ImageNetDataset(ImageFolder):
+    name = "ImageNet"
+
+    def __init__(self, root=ImageNet_path, *args, **kwargs):
+        super().__init__(root=root, *args, **kwargs)
+
+
 class CropDiseaseDataset(ImageFolder):
     name = "CropDisease"
 
