@@ -68,6 +68,7 @@ def parse_args(mode):
     parser.add_argument('--ft_epochs', default=100, type=int)
     parser.add_argument('--ft_pretrain_epoch', default=None, type=int)
     parser.add_argument('--ft_batch_size', default=4, type=int)
+    parser.add_argument('--ft_lr', default=1e-2, type=float, help='Learning rate for fine-tuning')
     parser.add_argument('--ft_augmentation', default=None, type=str, help="Augmentation used for fine-tuning {None, 'base', 'strong'}")
     parser.add_argument('--ft_parts', default='head', type=str, help="Where to fine-tune: {'full', 'body', 'head'}")
     parser.add_argument('--ft_features', default=None, type=str, help='Specify which features to use from the base model (see model/base.py)')

@@ -111,7 +111,7 @@ def main(params):
             opt_params.append({'params': head.parameters()})
         if params.ft_train_body:
             opt_params.append({'params': body.parameters()})
-        optimizer = torch.optim.SGD(opt_params, lr=1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
+        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
 
         # Labels are always [0, 0, ..., 1, ..., w-1]
         x_support = None
