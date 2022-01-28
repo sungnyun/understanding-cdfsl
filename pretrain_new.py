@@ -16,8 +16,8 @@ from paths import get_output_directory, get_final_pretrain_state_path, get_pretr
 
 
 def _get_dataloaders(params):
+    labeled_source_bs = params.ls_batch_size
     batch_size = params.batch_size
-    labeled_source_bs = batch_size
     unlabeled_source_bs = batch_size
     unlabeled_target_bs = batch_size
 

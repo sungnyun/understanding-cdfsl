@@ -52,6 +52,7 @@ def parse_args(mode):
     # You must specify --tag to differentiate models with different non-identifying parameters)
     parser.add_argument('--augmentation', default='strong', type=str, help="Augmentation used for pre-training {'base', 'strong'}")  # similar to aug_mode
     parser.add_argument('--batch_size', default=64, type=int, help='Batch size for pre-training.')  # similar to aug_mode
+    parser.add_argument('--ls_batch_size', default=None, type=int, help='Batch size for LS source pre-training.')  # if None, reverts to batch_size
     parser.add_argument('--lr', default=None, type=float, help='LR for pre-training.')
     parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for {LS,US} + UT.')  # similar to aug_mode
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
@@ -164,6 +165,15 @@ def parse_args(mode):
     else:
         raise ValueError('Invalid `source_dataset` argument: {}'.format(params.source_dataset))
 
+    # Default workers
+    if params.num_workers is None:
+        params.num_workers = 3
+        if params.target_dataset in ["cars", "cub", "plantae"]:
+            params.num_workers = 4
+        if params.target_dataset in ["ChestX"]:
+            params.num_workers = 6
+        print("Using default num_workers={}".format(params.num_workers))
+
     # Default optimizers
     if params.optimizer is None:
         if params.model in ['simsiam', 'byol']:
@@ -181,6 +191,10 @@ def parse_args(mode):
         else:
             params.lr = 0.1
         print("Using default lr for model {}: {}".format(params.model, params.lr))
+
+    # Default ls_batch_size
+    if params.ls_batch_size is None:
+        params.ls_batch_size = params.batch_size
 
     params.ft_train_body = params.ft_parts in ['body', 'full']
     params.ft_train_head = params.ft_parts in ['head', 'full']
