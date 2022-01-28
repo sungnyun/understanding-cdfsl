@@ -135,7 +135,7 @@ def parse_args(mode):
     if params.freeze_bn and not params.track_bn:
         raise AssertionError('Invalid parameter combination')
     if params.reinit_bn_stats:
-        raise AssertionError('Namgyu thinks there is a problem with params.reinit_bn_stats. Plz consult.')
+        raise AssertionError('Plz consult w/ anon author.')
     if params.ut and not params.target_dataset:
         raise AssertionError('Invalid parameter combination')
     if params.ft_parts not in ["head", "body", "full"]:
