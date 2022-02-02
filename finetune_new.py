@@ -135,7 +135,6 @@ def main(params):
             # Train
             body.train()
             head.train()
-            optimizer.zero_grad()
 
             if not use_fixed_features:  # load data every epoch
                 x_support, _ = next(support_iterator)
@@ -158,6 +157,7 @@ def main(params):
 
                 correct += torch.eq(y, p.argmax(dim=1)).sum()
                 loss = loss_fn(p, y)
+                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
