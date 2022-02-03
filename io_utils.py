@@ -58,7 +58,7 @@ def parse_args(mode):
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
-    parser.add_argument('--num_workers', default=2, type=int)
+    parser.add_argument('--num_workers', default=None, type=int)
 
     # New ft params
     parser.add_argument('--n_way', default=5, type=int)
@@ -176,17 +176,16 @@ def parse_args(mode):
 
     # Default optimizers
     if params.optimizer is None:
-        if params.model in ['simsiam', 'byol']:
-            params.optimizer = 'adam' if not params.ls else 'sgd'
-        else:
-            params.optimizer = 'sgd'
+        params.optimizer = 'sgd'
+        # if params.model in ['simsiam', 'byol']:
+        #     params.optimizer = 'adam'
         print("Using default optimizer for model {}: {}".format(params.model, params.optimizer))
 
     # Default learning rate
     if params.lr is None:
-        if params.model in ['simsiam', 'byol']:
-            params.lr = 3e-4 if not params.ls else 0.1
-        elif params.model in ['moco']:
+        # if params.model in ['simsiam', 'byol']:
+        #     params.lr = 3e-4
+        if params.model in ['moco']:
             params.lr = 0.01
         else:
             params.lr = 0.1
