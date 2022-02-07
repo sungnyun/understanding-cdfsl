@@ -59,9 +59,10 @@ def main(params):
     print('Saving pretrain params to {}'.format(params_path))
     print('Saving pretrain history to {}'.format(pretrain_history_path))
 
-    if params.pls:
+    if params.pls or params.pmsl:
+        assert (params.pls and params.pmsl) is False
         # Load previous pre-trained weights for second-step pre-training
-        previous_base_output_dir = get_output_directory(params, pls_previous=True)
+        previous_base_output_dir = get_output_directory(params, pls_previous=params.pls, pmsl_previous=params.pmsl)
         state_path = get_final_pretrain_state_path(previous_base_output_dir)
         print('Loading previous state for second-step pre-training:')
         print(state_path)

@@ -31,11 +31,13 @@ def parse_args(mode):
     # Pre-train params (determines pre-trained model output directory)
     # These must be specified during evaluation and fine-tuning to select pre-trained model
     parser.add_argument('--pls', action='store_true', help='Second-step pre-training on top of model trained with source labeled data')
+    parser.add_argument('--pmsl', action='store_true', help='Second-step pre-training on top of model trained with MSL')
     parser.add_argument('--ls', action='store_true', help='Use labeled source data for pre-training')
     parser.add_argument('--us', action='store_true', help='Use unlabeled source data for pre-training')
     parser.add_argument('--ut', action='store_true', help='Use unlabeled target data for pre-training')
     parser.add_argument('--tag', default='default', type=str, help='Tag used to differentiate output directories for pre-trained models')  # similar to aug_mode
     parser.add_argument('--pls_tag', default=None, type=str, help='Tag of pre-trained previous model (LS type) used for pls. Uses --tag by default.')
+    parser.add_argument('--pmsl_tag', default=None, type=str, help='Tag of pre-trained previous model (LS_UT type) used for pmsl. Uses --tag by default.')
 
     """
     Type 1: --ls
@@ -199,7 +201,14 @@ def parse_args(mode):
     params.ft_train_head = params.ft_parts in ['head', 'full']
 
     if params.pls_tag is None:
+        if params.pls:
+            print('WARNING: No PLS_TAG given!')
         params.pls_tag = params.tag
+
+    if params.pmsl_tag is None:
+        if params.pmsl:
+            print('WARNING: No PMSL_TAG given!')
+        params.pmsl_tag = params.tag
 
     return params
 

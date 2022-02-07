@@ -36,14 +36,17 @@ MODEL_KEYS = {
 }
 
 
-def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
+def get_output_directory(params: Namespace, pls_previous=False, pmsl_previous=False, makedirs=True):
     """
     :param params:
     :param pls_previous: get previous output directory for pls mode
+    :param pmsl_previous: get previous output directory for pmsl mode
     :return:
     """
     if pls_previous and not params.pls:
         raise Exception('Should not get pls_previous when params.pls is False')
+    if pmsl_previous and not params.pmsl:
+        raise Exception('Should not get pmsl_previous when params.pmsl is False')
 
     path = configs.save_dir
     path = os.path.join(path, 'output')
@@ -55,10 +58,16 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
         pretrain_specifiers.append(MODEL_KEYS['base'])
         pretrain_specifiers.append('LS')
         pretrain_specifiers.append(params.pls_tag)
+    elif pmsl_previous:
+        pretrain_specifiers.append(MODEL_KEYS[params.model])
+        pretrain_specifiers.append('LS_UT')
+        pretrain_specifiers.append(params.pmsl_tag)
     else:
         pretrain_specifiers.append(MODEL_KEYS[params.model])
         if params.pls:
             pretrain_specifiers.append('PLS')
+        if params.pmsl:
+            pretrain_specifiers.append('PMSL')
         if params.ls:
             pretrain_specifiers.append('LS')
         if params.us:
@@ -68,7 +77,7 @@ def get_output_directory(params: Namespace, pls_previous=False, makedirs=True):
         pretrain_specifiers.append(params.tag)
     path = os.path.join(path, '_'.join(pretrain_specifiers))
 
-    if params.ut and not pls_previous:
+    if params.ut and not (pls_previous or pmsl_previous):
         path = os.path.join(path, DATASET_KEYS[params.target_dataset])
 
     if makedirs:
