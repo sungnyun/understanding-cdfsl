@@ -178,16 +178,17 @@ def parse_args(mode):
 
     # Default optimizers
     if params.optimizer is None:
-        params.optimizer = 'sgd'
-        # if params.model in ['simsiam', 'byol']:
-        #     params.optimizer = 'adam'
+        if params.model in ['simsiam', 'byol']:
+            params.optimizer = 'adam' if not params.ls else 'sgd'
+        else:
+            params.optimizer = 'sgd'
         print("Using default optimizer for model {}: {}".format(params.model, params.optimizer))
 
     # Default learning rate
     if params.lr is None:
-        # if params.model in ['simsiam', 'byol']:
-        #     params.lr = 3e-4
-        if params.model in ['moco']:
+        if params.model in ['simsiam', 'byol']:
+            params.lr = 3e-4 if not params.ls else 0.1
+        elif params.model in ['moco']:
             params.lr = 0.01
         else:
             params.lr = 0.1
