@@ -24,6 +24,7 @@ DATASET_KEYS = {
 BACKBONE_KEYS = {
     'resnet10': 'resnet10',
     'resnet18': 'resnet18',
+    'resnet50': 'resnet50',
 }
 
 MODEL_KEYS = {
