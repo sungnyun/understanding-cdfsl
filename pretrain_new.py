@@ -13,6 +13,7 @@ from io_utils import parse_args
 from model import get_model_class
 from paths import get_output_directory, get_final_pretrain_state_path, get_pretrain_state_path, \
     get_pretrain_params_path, get_pretrain_history_path
+from scheduler import RepeatedMultiStepLR
 
 
 def _get_dataloaders(params):
@@ -89,9 +90,12 @@ def main(params):
     else:
         raise ValueError('Invalid value for params.optimizer: {}'.format(params.optimizer))
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                     milestones=[400, 600, 800],
-                                                     gamma=0.1)
+    if params.scheduler == "MultiStepLR":
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params.scheduler_milestones, gamma=0.1)
+    elif params.scheduler == "RepeatedMultiStepLR":
+        scheduler = RepeatedMultiStepLR(optimizer, milestones=params.scheduler_milestones, interval=1000, gamma=0.1)
+    else:
+        raise ValueError("Invalid value for params.scheduler: {}".format(params.scheduler))
 
     pretrain_history = {
         'loss': [0] * params.epochs,

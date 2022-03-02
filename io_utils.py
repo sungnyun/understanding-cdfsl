@@ -60,6 +60,8 @@ def parse_args(mode):
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode
+    parser.add_argument('--scheduler', default="MultiStepLR", type=str, help="Scheduler to use (refer to `pretrain_new.py`)")
+    parser.add_argument('--scheduler_milestones', default=[400, 600, 800], type=int, nargs="+", help="Milestones for (Repeated)MultiStepLR scheduler")
     parser.add_argument('--num_workers', default=None, type=int)
 
     # New ft params
