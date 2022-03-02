@@ -2,6 +2,8 @@
 *.pt
 *.json
 
+scripts/
+
 # user-defined files
 *.log
 *.tar
