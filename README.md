@@ -50,7 +50,7 @@ Note: `chestX/images` should contain **all** images from the ChestX dataset (the
 
 ## Usage
 
-The main training files are `pretrain_new.py` and `finetune_new.py`. Refer to `pretrain_new.sh` and `finetune_new.sh` for common arguments. To see all CLI arguments, refer to `io_utils.py`.
+The main training files are `pretrain_new.py` and `finetune_new.py`. To see all CLI arguments, refer to `io_utils.py`.
 
 ### 1. Pretraining <a name="pretraining"></a>
 
