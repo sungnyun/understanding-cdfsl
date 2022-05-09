@@ -60,16 +60,17 @@ def main(params):
     print('Saving pretrain params to {}'.format(params_path))
     print('Saving pretrain history to {}'.format(pretrain_history_path))
 
-    if params.pls or params.pmsl:
-        assert (params.pls and params.pmsl) is False
+    if params.pls or params.put or params.pmsl:
         # Load previous pre-trained weights for second-step pre-training
-        previous_base_output_dir = get_output_directory(params, pls_previous=params.pls, pmsl_previous=params.pmsl)
+        previous_base_output_dir = get_output_directory(params, previous=True)
         state_path = get_final_pretrain_state_path(previous_base_output_dir)
         print('Loading previous state for second-step pre-training:')
         print(state_path)
 
         # Note, override model.load_state_dict to change this behavior.
         state = torch.load(state_path)
+        # del state["classifier.weight"]  # hotfixes for using weights pre-trained on different source datasets w/o LS
+        # del state["classifier.bias"]
         missing, unexpected = model.load_state_dict(state, strict=False)
         if len(unexpected):
             raise Exception("Unexpected keys from previous state: {}".format(unexpected))

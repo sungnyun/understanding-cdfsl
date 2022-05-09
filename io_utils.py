@@ -31,24 +31,14 @@ def parse_args(mode):
     # Pre-train params (determines pre-trained model output directory)
     # These must be specified during evaluation and fine-tuning to select pre-trained model
     parser.add_argument('--pls', action='store_true', help='Second-step pre-training on top of model trained with source labeled data')
-    parser.add_argument('--pmsl', action='store_true', help='Second-step pre-training on top of model trained with MSL')
+    parser.add_argument('--put', action='store_true', help='Second-step pre-training on top of model trained with target unlabeled data')
+    parser.add_argument('--pmsl', action='store_true', help='Second-step pre-training on top of model trained with MSL (instead of pls_put)')
     parser.add_argument('--ls', action='store_true', help='Use labeled source data for pre-training')
     parser.add_argument('--us', action='store_true', help='Use unlabeled source data for pre-training')
     parser.add_argument('--ut', action='store_true', help='Use unlabeled target data for pre-training')
     parser.add_argument('--tag', default='default', type=str, help='Tag used to differentiate output directories for pre-trained models')  # similar to aug_mode
-    parser.add_argument('--pls_tag', default=None, type=str, help='Tag of pre-trained previous model (LS type) used for pls. Uses --tag by default.')
-    parser.add_argument('--pmsl_tag', default=None, type=str, help='Tag of pre-trained previous model (LS_UT type) used for pmsl. Uses --tag by default.')
-
-    """
-    Type 1: --ls
-    Type 2: --us
-    Type 3: --ut
-    Type 4: --ls --ut
-    Type 5: --us --ut
-    Type 6: --pls --ut
-    Type 7: --pls --ls --ut
-    Type 8: --pls --us --ut
-    """
+    parser.add_argument('--pls_tag', default=None, type=str, help='Deprecated. Please use `previous_tag`.')
+    parser.add_argument('--previous_tag', default=None, type=str, help='Tag of pre-trained previous model for pls, put, pmsl. Uses --tag by default.')
 
     # Pre-train params (non-identifying, i.e., does not affect output directory)
     # You must specify --tag to differentiate models with different non-identifying parameters)
@@ -146,6 +136,10 @@ def parse_args(mode):
     if params.ft_parts not in ["head", "body", "full"]:
         raise AssertionError('Invalid params.ft_parts: {}'.format(params.ft_parts))
 
+    # pls, put, pmsl parameters
+    if sum((params.pls, params.put, params.pmsl)) > 1:
+        raise AssertionError('You may only specify one of params.{pls,put,pmsl}')
+
     # Assign num_classes
     if params.dataset == 'miniImageNet':
         params.num_classes = 64
@@ -178,6 +172,7 @@ def parse_args(mode):
         if params.target_dataset in ["ChestX"]:
             params.num_workers = 6
         print("Using default num_workers={}".format(params.num_workers))
+    params.num_workers *= 2  # TEMP
 
     # Default optimizers
     if params.optimizer is None:
@@ -204,15 +199,13 @@ def parse_args(mode):
     params.ft_train_body = params.ft_parts in ['body', 'full']
     params.ft_train_head = params.ft_parts in ['head', 'full']
 
-    if params.pls_tag is None:
-        if params.pls:
-            print('WARNING: No PLS_TAG given!')
-        params.pls_tag = params.tag
-
-    if params.pmsl_tag is None:
-        if params.pmsl:
-            print('WARNING: No PMSL_TAG given!')
-        params.pmsl_tag = params.tag
+    if params.previous_tag is None:
+        if params.pls_tag:  # support for deprecated argument (changed 5/8/2022)
+            print("Warning: params.pls_tag is deprecated. Please use params.previous_tag")
+            params.previous_tag = params.pls_tag
+        elif params.pls or params.put or params.pmsl:
+            print("Using params.tag for params.previous_tag")
+            params.previous_tag = params.tag
 
     return params
 
@@ -221,12 +214,14 @@ def get_init_file(checkpoint_dir):
     init_file = os.path.join(checkpoint_dir, 'initial.tar')
     return init_file
 
+
 def get_assigned_file(checkpoint_dir, num, dataset_name=None):
     if dataset_name is None:
         assign_file = os.path.join(checkpoint_dir, '{:d}.tar'.format(num))
     else:
         assign_file = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, num))
     return assign_file
+
 
 def get_resume_file(checkpoint_dir, dataset_name=None):
     filelist = glob.glob(os.path.join(checkpoint_dir, '*.tar'))
@@ -246,6 +241,7 @@ def get_resume_file(checkpoint_dir, dataset_name=None):
         resume_file = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, max_epoch))
 
     return resume_file
+
 
 def get_best_file(checkpoint_dir):
     best_file = os.path.join(checkpoint_dir, 'best_model.tar')
