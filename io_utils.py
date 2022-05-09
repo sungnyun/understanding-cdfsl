@@ -57,6 +57,7 @@ def parse_args(mode):
     parser.add_argument('--ls_batch_size', default=None, type=int, help='Batch size for LS source pre-training.')  # if None, reverts to batch_size
     parser.add_argument('--lr', default=None, type=float, help='LR for pre-training.')
     parser.add_argument('--gamma', default=0.5, type=float, help='Gamma value for {LS,US} + UT.')  # similar to aug_mode
+    parser.add_argument('--gamma_schedule', default=None, type=str, help='None | "linear"')
     parser.add_argument('--epochs', default=1000, type=int, help='Pre-training epochs.')  # similar to aug_mode
     parser.add_argument('--model_save_interval', default=50, type=int, help='Save model state every N epochs during pre-training.')  # similar to aug_mode
     parser.add_argument('--optimizer', default=None, type=str, help="Optimizer used during pre-training {'sgd', 'adam'}. Default if None")  # similar to aug_mode

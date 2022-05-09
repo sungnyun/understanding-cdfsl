@@ -145,7 +145,10 @@ def main(params):
                 epoch_source_loss += loss.item()
                 steps += 1
         elif params.ut:  # ut (epoch is based on unlabeled target)
-            for x, _ in tqdm(unlabeled_target_loader):
+            max_epochs = params.epochs
+            max_steps = len(unlabeled_target_loader) * max_epochs
+            for i, (x, _) in enumerate(tqdm(unlabeled_target_loader)):
+                current_step = epoch * len(unlabeled_target_loader) + i
                 model.on_step_start()
                 optimizer.zero_grad()
                 target_loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
@@ -167,9 +170,15 @@ def main(params):
                         sx, sy = unlabeled_source_loader_iter.next()
                     source_loss = model.compute_ssl_loss(sx[0].cuda(), sx[1].cuda())  # US loss
                     epoch_source_loss += source_loss.item()
-
                 if source_loss:
-                    loss = source_loss * (1 - params.gamma) + target_loss * params.gamma
+                    if params.gamma_schedule is None:
+                        gamma = params.gamma
+                    elif params.gamma_schedule == "linear":
+                        gamma = current_step / (max_steps - 1)  # gamma \in [0, 1]
+                        assert 0 <= gamma <= 1  # temp
+                    else:
+                        raise AssertionError("Invalid params.gamma_schedule (should be checked during argparse)")
+                    loss = source_loss * (1 - gamma) + target_loss * gamma
                 else:
                     loss = target_loss
                 loss.backward()
