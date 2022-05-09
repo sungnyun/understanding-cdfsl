@@ -88,7 +88,7 @@ def get_output_directory(params: Namespace, previous=False, makedirs=True):
         if params.put or params.pmsl:
             path = os.path.join(path, DATASET_KEYS[params.target_dataset])
     else:
-        if params.ut:
+        if params.put or params.pmsl or params.ut:
             path = os.path.join(path, DATASET_KEYS[params.target_dataset])
 
     if makedirs:
