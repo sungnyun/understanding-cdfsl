@@ -86,7 +86,7 @@ Distributed under the MIT License.
 
 ## Attribution
 
-Below, we provide the licenses, attribution, and URL of the datasets considered in our paper.
+Below, we provide the licenses, attribution, and URL of the datasets considered in our paper (if applicable).
 
 - **ImageNet** is available at https://image-net.org/. miniImageNet and tieredImageNet are subsets of ImageNet.
 - **CropDisease** refers to the Plant Disease dataset on Kaggle, licensed under  GPL 2. It is available at https://www.kaggle.com/saroz014/plant-disease/.
@@ -97,4 +97,3 @@ Below, we provide the licenses, attribution, and URL of the datasets considered 
 - **Plantae** refers to the Plantae super category of the iNaturalist 2017 dataset. It is available at https://github.com/visipedia/inat_comp/tree/master/2017.
 - **CUB** refers to the Caltech-UCSD Birds-200-2011 dataset, licensed under CC0 (public domain). It is available at https://www.kaggle.com/datasets/veeralakrishna/200-bird-species-with-11788-images.
 - **Cars** is available at https://ai.stanford.edu/~jkrause/cars/car_dataset.html.
-\end{itemize}
