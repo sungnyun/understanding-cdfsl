@@ -83,3 +83,18 @@ python ./finetune_new.py --ls --ut --source_dataset miniImageNet --target_datase
 ## License
 
 Distributed under the MIT License.
+
+## Attribution
+
+Below, we provide the licenses, attribution, and URL of the datasets considered in our paper.
+
+- **ImageNet** is available at https://image-net.org/. miniImageNet and tieredImageNet are subsets of ImageNet.
+- **CropDisease** refers to the Plant Disease dataset on Kaggle, licensed under  GPL 2. It is available at https://www.kaggle.com/saroz014/plant-disease/.
+- **EuroSAT** is available at https://github.com/phelber/eurosat.
+- **ISIC** refers to the ISIC 2018 Challenge Task 3 dataset. It is available at https://challenge.isic-archive.com.
+- **ChestX** refers to the Chest-Xray8 provided by the NIH Clinical Center. The dataset is available at https://nihcc.app.box.com/v/ChestXray-NIHCC.
+- **Places** is licensed under CC BY. It is available at http://places.csail.mit.edu/user.
+- **Plantae** refers to the Plantae super category of the iNaturalist 2017 dataset. It is available at https://github.com/visipedia/inat_comp/tree/master/2017.
+- **CUB** refers to the Caltech-UCSD Birds-200-2011 dataset, licensed under CC0 (public domain). It is available at https://www.kaggle.com/datasets/veeralakrishna/200-bird-species-with-11788-images.
+- **Cars** is available at https://ai.stanford.edu/~jkrause/cars/car_dataset.html.
+\end{itemize}
