@@ -39,8 +39,16 @@ class EpisodeSampler:
         selected_classes = rs.permutation(self.n_classes)[:self.w]
         indices = []
         for cls in selected_classes:
-            indices.append(
-                rs.choice(self.indices_by_class[cls], self.s + self.q, replace=False))
+            candidates: int = len(self.indices_by_class[cls])
+            choices: int = self.s + self.q
+
+            if candidates > choices:
+                indices.append(
+                    rs.choice(self.indices_by_class[cls], choices, replace=False))
+            else:
+                indices.append(
+                    rs.choice(self.indices_by_class[cls], choices, replace=True))
+
         episode = np.stack(indices)
         support = episode[:, :self.s]
         query = episode[:, self.s:]
