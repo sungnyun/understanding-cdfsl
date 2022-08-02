@@ -159,6 +159,22 @@ def parse_args(mode):
         params.num_classes = 351
     elif params.source_dataset == 'ImageNet':
         params.num_classes = 1000
+    elif params.source_dataset == 'CropDisease':
+        params.num_classes = 38
+    elif params.source_dataset == 'EuroSAT':
+        params.num_classes = 10
+    elif params.source_dataset == 'ISIC':
+        params.num_classes = 7
+    elif params.source_dataset == 'ChestX':
+        params.num_classes = 7
+    elif params.source_dataset == 'places':
+        params.num_classes = 16
+    elif params.source_dataset == 'plantae':
+        params.num_classes = 69
+    elif params.source_dataset == 'cars':
+        params.num_classes = 196
+    elif params.source_dataset == 'cub':
+        params.num_classes = 200
     elif params.source_dataset == 'none':
         params.num_classes = 5
     else:
