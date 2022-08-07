@@ -5,7 +5,7 @@ import shutil
 from tqdm import tqdm
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-SUBSET_PATH = 'plantae_cdfsl_subset_69_class.json'
+SUBSET_PATH = os.path.join(ROOT, "plantae_cdfsl_subset_69_class.json")
 SOURCE_DIR = os.path.join(ROOT, "input", "Plantae")
 TARGET_DIR = os.path.join(ROOT, "output", "plantae_cdfsl")
 
