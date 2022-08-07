@@ -1,324 +1,228 @@
-from typing import List, Dict
-
 import copy
-import numpy as np
-import pandas as pd
-import torch
-import torch.nn as nn
-from torch.autograd import Variable
-import torch.optim
-import torch.nn.functional as F
-import torch.optim.lr_scheduler as lr_scheduler
+import json
 import math
-import time
 import os
-import glob
-import warnings
-from itertools import combinations
-from tqdm import tqdm
 
-import configs
-import backbone
-from data.datamgr import SimpleDataManager, SetDataManager
-from methods.baselinetrain import BaselineTrain
+import pandas as pd
+import torch.nn as nn
 
-from io_utils import parse_args, get_init_file, get_resume_file, get_best_file, get_assigned_file
+from backbone import get_backbone_class
+from datasets.dataloader import get_labeled_episodic_dataloader
+from io_utils import parse_args
+from model import get_model_class
+from model.classifier_head import get_classifier_head_class
+from paths import get_output_directory, get_ft_output_directory, get_ft_train_history_path, get_ft_test_history_path, \
+    get_final_pretrain_state_path, get_pretrain_state_path, get_ft_params_path
 from utils import *
-from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
 
-class Classifier(nn.Module):
-    def __init__(self, dim, n_way):
-        super(Classifier, self).__init__()
-        self.fc = nn.Linear(dim, n_way)
 
-    def forward(self, x):
-        x = self.fc(x)
-        return x
+def main(params):
+    base_output_dir = get_output_directory(params)
+    output_dir = get_ft_output_directory(params)
+    print('Running fine-tune with output folder:')
+    print(output_dir)
+    print()
 
-class projector_SIMCLR(nn.Module):
-    '''
-        The projector for SimCLR. This is added on top of a backbone for SimCLR Training
-    '''
-    def __init__(self, in_dim, out_dim):
-        super(projector_SIMCLR, self).__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
+    # Settings
+    n_episodes = 600
+    bs = params.ft_batch_size
+    w = params.n_way
+    s = params.n_shot
+    q = params.n_query_shot
+    # Whether to optimize for fixed features (when there is no augmentation and only head is updated)
+    use_fixed_features = params.ft_augmentation is None and params.ft_parts == 'head'
 
-        self.fc1 = nn.Linear(in_dim, in_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(in_dim, out_dim)
+    # Model
+    backbone = get_backbone_class(params.backbone)()
+    body = get_model_class(params.model)(backbone, params)
+    if params.ft_features is not None:
+        if params.ft_features not in body.supported_feature_selectors:
+            raise ValueError(
+                'Feature selector "{}" is not supported for model "{}"'.format(params.ft_features, params.model))
 
-    def forward(self, x):
-        return self.fc2(self.relu(self.fc1(x)))
+    # Dataloaders
+    # Note that both dataloaders sample identical episodes, via episode_seed
+    support_epochs = 1 if use_fixed_features else params.ft_epochs
+    support_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=True,
+                                                     n_query_shot=q, n_episodes=n_episodes, n_epochs=support_epochs,
+                                                     augmentation=params.ft_augmentation,
+                                                     unlabeled_ratio=params.unlabeled_ratio,
+                                                     num_workers=params.num_workers,
+                                                     split_seed=params.split_seed, episode_seed=params.ft_episode_seed)
+    query_loader = get_labeled_episodic_dataloader(params.target_dataset, n_way=w, n_shot=s, support=False,
+                                                   n_query_shot=q, n_episodes=n_episodes, augmentation=None,
+                                                   unlabeled_ratio=params.unlabeled_ratio,
+                                                   num_workers=params.num_workers,
+                                                   split_seed=params.split_seed,
+                                                   episode_seed=params.ft_episode_seed)
+    assert (len(query_loader) == n_episodes)
+    assert (len(support_loader) == n_episodes * support_epochs)
 
-def finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir, use_simclr_clf,
-            finetune_epoch=100, batch_size=4, finetune_parts='head', n_query=15, n_way=5, n_support=5):
-    iter_num = len(novel_loader)
+    query_iterator = iter(query_loader)
+    support_iterator = iter(support_loader)
+    support_batches = math.ceil(w * s / bs)
 
-    df = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
-    df_train = pd.DataFrame(None, index=list(range(1, iter_num+1)), columns=['epoch{}'.format(e+1) for e in range(finetune_epoch)])
+    # Output (history, params)
+    train_history_path = get_ft_train_history_path(output_dir)
+    test_history_path = get_ft_test_history_path(output_dir)
+    params_path = get_ft_params_path(output_dir)
+    print('Saving finetune params to {}'.format(params_path))
+    print('Saving finetune train history to {}'.format(train_history_path))
+    print('Saving finetune validation history to {}'.format(train_history_path))
+    with open(params_path, 'w') as f:
+        json.dump(vars(params), f, indent=4)
+    df_train = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                            columns=['epoch{}'.format(e + 1) for e in range(params.ft_epochs)])
+    df_test = pd.DataFrame(None, index=list(range(1, n_episodes + 1)),
+                           columns=['epoch{}'.format(e + 1) for e in range(params.ft_epochs)])
 
-    basename = '{}_{}way{}shot_{}_ft{}_bs{}.csv'.format(
-        dataset_name, n_way, n_support, finetune_parts, finetune_epoch, batch_size)
-    result_path = os.path.join(checkpoint_dir, basename)
-    basename_train = '{}_{}way{}shot_{}_ft{}_bs{}_train.csv'.format(
-        dataset_name, n_way, n_support, finetune_parts, finetune_epoch, batch_size)
-    result_path_train = os.path.join(checkpoint_dir, basename_train)
-    print('Saving results to {}'.format(result_path))
-
-    # Determine model weights path
-    if pretrained_dataset == 'none':
-        modelfile = None
-        init_state = copy.deepcopy(pretrained_model.feature.state_dict())
-        print ('Fine-tuning from scratch')
+    # Pre-train state
+    if params.ft_pretrain_epoch is None:
+        body_state_path = get_final_pretrain_state_path(base_output_dir)
     else:
-        if params.pretrain_type == 1 or params.pretrain_type == 2:
-            modelfile = get_resume_file(checkpoint_dir)
-        else:
-            modelfile = get_resume_file(checkpoint_dir, dataset_name)
-        if not os.path.exists(modelfile):
-            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
-        print ('Fine-tuning from the pre-trained model')
-        print ('Using model weights path {}'.format(modelfile))
+        body_state_path = get_pretrain_state_path(base_output_dir, params.ft_pretrain_epoch)
+    if not os.path.exists(body_state_path):
+        raise ValueError('Invalid pre-train state path: ' + body_state_path)
+    print('Using pre-train state:')
+    print(body_state_path)
+    print()
+    state = torch.load(body_state_path)
 
-    ##### Fine-tuning and Evaluation #####
-    print ('Fine-tuning start! Fine-tuned part is {}.'.format(finetune_parts))
-    for task_num, (x, y) in tqdm(enumerate(novel_loader)):
-        task_all = []
-        task_all_train = []
+    # HOTFIX
+    # print("HOTFIX: removing classifier weights from state")
+    # del state["classifier.weight"]
+    # del state["classifier.bias"]
 
-        # Load pre-trained state dict
-        if modelfile is not None:
-            tmp = torch.load(modelfile)
-            state = tmp['state']
+    # Loss function
+    loss_fn = nn.CrossEntropyLoss().cuda()
 
-            state_keys = list(state.keys())
-            for _, key in enumerate(state_keys):
-                if "feature." in key:
-                    newkey = key.replace("feature.","")  # an architecture model has attribute 'feature', load architecture feature to backbone by casting name from 'feature.trunk.xx' to 'trunk.xx'  
-                    state[newkey] = state.pop(key)
+    print('Starting fine-tune')
+    if use_fixed_features:
+        print('Running optimized fixed-feature fine-tuning (no augmentation, fixed body)')
+    print()
+
+    for episode in range(n_episodes):
+        # Reset models for each episode
+        # classifier.bias issue
+
+        # HOTFIX: load state dict non-strict to ignore classifier weights
+        # body.load_state_dict(copy.deepcopy(state), strict=False)  # note, override model.load_state_dict to change this behavior.
+        body.load_state_dict(copy.deepcopy(state))  # note, override model.load_state_dict to change this behavior.
+        head = get_classifier_head_class(params.ft_head)(body.final_feat_dim, params.n_way, params)  # TODO: apply ft_features
+        body.cuda()
+        head.cuda()
+
+        opt_params = []
+        if params.ft_train_head:
+            opt_params.append({'params': head.parameters()})
+        if params.ft_train_body:
+            opt_params.append({'params': body.parameters()})
+        optimizer = torch.optim.SGD(opt_params, lr=params.ft_lr, momentum=0.9, dampening=0.9, weight_decay=0.001)
+
+        # Labels are always [0, 0, ..., 1, ..., w-1]
+        x_support = None
+        f_support = None
+        y_support = torch.arange(w).repeat_interleave(s).cuda()
+        x_query = next(query_iterator)[0].cuda()
+
+        f_query = None
+        y_query = torch.arange(w).repeat_interleave(q).cuda()
+
+        if use_fixed_features:  # load data and extract features once per episode
+            with torch.no_grad():
+                x_support, _ = next(support_iterator)
+                x_support = x_support.cuda()
+                f_support = body.forward_features(x_support, params.ft_features)
+                f_query = body.forward_features(x_query, params.ft_features)
+
+        train_acc_history = []
+        test_acc_history = []
+        for epoch in range(params.ft_epochs):
+            # Train
+            body.train()
+            head.train()
+
+            if not use_fixed_features:  # load data every epoch
+                x_support, _ = next(support_iterator)
+                x_support = x_support.cuda()
+
+            total_loss = 0
+            correct = 0
+            indices = np.random.permutation(w * s)
+            for i in range(support_batches):
+                start_index = i * bs
+                end_index = min(i * bs + bs, w * s)
+                batch_indices = indices[start_index:end_index]
+                y = y_support[batch_indices]
+
+                if use_fixed_features:
+                    f = f_support[batch_indices]
                 else:
-                    state[newkey] = state.pop(key)
-            pretrained_model.feature.load_state_dict(state, strict=True)
-            if use_simclr_clf:
-                clf_SIMCLR = projector_SIMCLR(pretrained_model.feature.final_feat_dim, out_dim=128)
-                state = tmp['simCLR']
-                clf_SIMCLR.load_state_dict(state, strict=True)
-                clf_SIMCLR.cuda()
-        else:
-            pretrained_model.feature.load_state_dict(init_state, strict=True)
-        pretrained_model.cuda()
+                    f = body.forward_features(x_support[batch_indices], params.ft_features)
+                p = head(f)
 
-        # Set a new classifier for fine-tuning and optimizers according to the fine-tuning parts and loss function
-        if params.method in ['baseline', 'baseline++']:
-            if use_simclr_clf:
-                classifier = Classifier(128, n_way)
-            else:
-                classifier = Classifier(pretrained_model.feature.final_feat_dim, n_way)
-            classifier.cuda()
+                correct += torch.eq(y, p.argmax(dim=1)).sum()
+                loss = loss_fn(p, y)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
 
-            if use_simclr_clf:
-                if finetune_parts == 'head':
-                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 0)
-                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
-                if finetune_parts == 'simclr_head':
-                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
-                if finetune_parts == 'full':
-                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    clf_SIMCLR_opt = torch.optim.SGD(clf_SIMCLR.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 1e-2)
-            else:
-                if finetune_parts == 'head':
-                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 0)
-                elif finetune_parts == 'full':
-                    classifier_opt = torch.optim.SGD(classifier.parameters(), lr = 1e-2, momentum=0.9, dampening=0.9, weight_decay=0.001)
-                    delta_opt = torch.optim.SGD(pretrained_model.parameters(), lr = 1e-2)
-                else:
-                    raise ValueError('Invalid `finetune_parts` argument: {}'.format(finetune_parts))
+                total_loss += loss.item()
 
-        loss_fn = nn.CrossEntropyLoss().cuda()
-
-        # Set both support and query set
-        n_query = x.size(1) - n_support
-        x = x.cuda()
-        x_var = Variable(x)
-
-        x_a_i = x_var[:,:n_support,:,:,:].contiguous().view( n_way* n_support, *x.size()[2:]) # (25 (5-way * 5-n_support), 3, 224, 224)
-        x_b_i = x_var[:, n_support:,:,:,:].contiguous().view( n_way* n_query,  *x.size()[2:]) # (75 (5-way * 15-n_qeury), 3, 224, 224)
-        y_a_i = Variable( torch.from_numpy( np.repeat(range( n_way ), n_support ) )).cuda() # (25,)
-
-        support_size = n_way * n_support
-
-        # Start fine-tuning and evaluation in an episodic manner
-        for epoch in range(finetune_epoch):
-            pretrained_model.train()
-            classifier.train()
-            if use_simclr_clf:
-                clf_SIMCLR.train()
-                
-            if use_simclr_clf:
-                if finetune_parts == 'head':
-                    pretrained_model.eval()
-                    clf_SIMCLR.eval()
-                elif finetune_parts == 'simclr_head':
-                    pretrained_model.eval()
-            else:
-                if finetune_parts == 'head':
-                    pretrained_model.eval()
-
-            # Fine-tuning
-            rand_id = np.random.permutation(support_size)
-            for j in range(0, support_size, batch_size):
-                # Divide few samples into fewer batches
-                selected_id = torch.from_numpy(rand_id[j:min(j+batch_size, support_size)]).cuda()
-                x_batch = x_a_i[selected_id]
-                y_batch = y_a_i[selected_id]
-                
-                if use_simclr_clf:
-                    output = pretrained_model.feature(x_batch)
-                    scores = classifier(clf_SIMCLR(output))
-                    loss = loss_fn(scores, y_batch)
-                    
-                    classifier_opt.zero_grad()
-                    clf_SIMCLR_opt.zero_grad()
-                    delta_opt.zero_grad()
-
-                    loss.backward()
-
-                    classifier_opt.step()
-                    clf_SIMCLR_opt.step()
-                    delta_opt.step()
-                else:
-                    output = pretrained_model.feature(x_batch)
-                    scores = classifier(output)
-                    loss = loss_fn(scores, y_batch)
-                    
-                    classifier_opt.zero_grad()
-                    delta_opt.zero_grad()
-
-                    loss.backward()
-
-                    classifier_opt.step()
-                    delta_opt.step()
+            train_loss = total_loss / support_batches
+            train_acc = correct / (w * s)
 
             # Evaluation
-            if (not params.no_tracking) or (epoch+1 == finetune_epoch):
+            body.eval()
+            head.eval()
+
+            if params.ft_intermediate_test or epoch == params.ft_epochs - 1:
                 with torch.no_grad():
-                    pretrained_model.eval()
-                    classifier.eval()
-                    if use_simclr_clf:
-                        clf_SIMCLR.eval()
-
-                    ### Train
-                    y_support = np.repeat(range( n_way ), n_support )
-
-                    if use_simclr_clf:
-                        scores = classifier(clf_SIMCLR(pretrained_model.feature(x_a_i.cuda())))
-                    else:
-                        scores = classifier(pretrained_model.feature(x_a_i.cuda()))
-                    topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
-                    topk_ind = topk_labels.cpu().numpy()
-
-                    top1_correct = np.sum(topk_ind[:,0] == y_support)
-                    correct_this, count_this = float(top1_correct), len(y_support)
-                    train_acc = correct_this/count_this*100
-                    task_all_train.append(train_acc)
-
-                    ### Test
-                    y_query = np.repeat(range( n_way ), n_query )
-                    
-                    if use_simclr_clf:
-                        scores = classifier(clf_SIMCLR(pretrained_model.feature(x_b_i.cuda())))
-                    else:
-                        scores = classifier(pretrained_model.feature(x_b_i.cuda()))
-                    topk_scores, topk_labels = scores.data.topk(1, 1, True, True)
-                    topk_ind = topk_labels.cpu().numpy()
-                    
-                    top1_correct = np.sum(topk_ind[:,0] == y_query)
-                    correct_this, count_this = float(top1_correct), len(y_query)
-                    test_acc = correct_this/count_this*100
-                    task_all.append(test_acc)
-                if (epoch+1 == finetune_epoch):
-                    print('task: {}, train acc: {}, test acc: {}'.format(task_num, train_acc, test_acc))
+                    if not use_fixed_features:
+                        f_query = body.forward_features(x_query, params.ft_features)
+                    p_query = head(f_query)
+                test_acc = torch.eq(y_query, p_query.argmax(dim=1)).sum() / (w * q)
             else:
-                task_all_train.append(0.0)
-                task_all.append(0.0)
+                test_acc = torch.tensor(0)
 
-        df.loc[task_num+1] = task_all
-        df.to_csv(result_path)
-        df_train.loc[task_num+1] = task_all_train
-        df_train.to_csv(result_path_train)
-    print ('{:4.2f} +- {:4.2f}'.format(df.mean()[-1], 1.96*df.std()[-1]/np.sqrt(iter_num)))
+            print_epoch_logs = False
+            if print_epoch_logs and (epoch + 1) % 10 == 0:
+                fmt = 'Epoch {:03d}: Loss={:6.3f} Train ACC={:6.3f} Test ACC={:6.3f}'
+                print(fmt.format(epoch + 1, train_loss, train_acc, test_acc))
 
-if __name__=='__main__':
+            train_acc_history.append(train_acc.item())
+            test_acc_history.append(test_acc.item())
+
+        df_train.loc[episode + 1] = train_acc_history
+        df_train.to_csv(train_history_path)
+        df_test.loc[episode + 1] = test_acc_history
+        df_test.to_csv(test_history_path)
+
+        fmt = 'Episode {:03d}: train_loss={:6.4f} train_acc={:6.2f} test_acc={:6.2f}'
+        print(fmt.format(episode, train_loss, train_acc_history[-1] * 100, test_acc_history[-1] * 100))
+
+    fmt = 'Final Results: Acc={:5.2f} Std={:5.2f}'
+    print(fmt.format(df_test.mean()[-1] * 100, 1.96 * df_test.std()[-1] / np.sqrt(n_episodes) * 100))
+
+    print('Saved history to:')
+    print(train_history_path)
+    print(test_history_path)
+    df_train.to_csv(train_history_path)
+    df_test.to_csv(test_history_path)
+
+
+if __name__ == '__main__':
     np.random.seed(10)
-    params = parse_args('train')
-    ##################################################################
-    if params.model == 'ResNet10':
-        model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet18-84':
-        model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
-    elif params.model == 'ResNet18':
-        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
-    else:
-        raise ValueError('Invalid `model` argument: {}'.format(params.model))
+    params = parse_args()
 
-    pretrained_dataset = params.dataset
-    if pretrained_dataset == 'miniImageNet':
-        params.num_classes = 64
-    elif pretrained_dataset == 'tieredImageNet':
-        params.num_classes = 351
-    elif pretrained_dataset == 'ImageNet':
-        params.num_classes = 1000
-    elif pretrained_dataset == 'none':
-        params.num_classes = 5
-    else:
-        raise ValueError('Invalid `dataset` argument: {}'.format(pretrained_dataset))
+    targets = params.target_dataset
+    if targets is None:
+        targets = [targets]
+    elif len(targets) > 1:
+        print('#' * 80)
+        print("Running finetune iteratively for multiple target datasets: {}".format(targets))
+        print('#' * 80)
 
-    if params.method == 'baseline':
-        pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
-    elif params.method == 'baseline++':
-        pretrained_model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
-    else:
-        raise ValueError('Invalid `method` argument: {}'.format(params.method))
-
-    checkpoint_dir = '%s/checkpoints/%s/%s_%s/type%s_%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type), params.aug_mode)
-    ##################################################################
-    image_size = 224  # for every evaluation dataset except tieredImageNet
-    iter_num = 600
-    few_shot_params = dict(n_way=params.test_n_way, n_support=params.n_shot)
-
-    finetune_parts = params.finetune_parts # 'head', 'body', 'full'
-    dataset_names = params.dataset_names
-    split = params.startup_split
-    use_simclr_clf = params.use_simclr_clf
-    
-    for dataset_name in dataset_names:
-        print (dataset_name)
-        print ('Initializing data loader...')
-        if dataset_name == "miniImageNet_test":
-            datamgr = miniImageNet_few_shot.SetDataManager(image_size, n_episode=iter_num, n_query=15, split=split, **few_shot_params)
-        if dataset_name == "tieredImageNet":
-            image_size = 84
-            datamgr = tieredImageNet_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
-        elif dataset_name == "CropDisease":
-            datamgr = CropDisease_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
-        elif dataset_name == "EuroSAT":
-            datamgr = EuroSAT_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
-        elif dataset_name == "ISIC":
-            datamgr = ISIC_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
-        elif dataset_name == "ChestX":
-            datamgr = Chest_few_shot.SetDataManager(image_size, n_eposide=iter_num, n_query=15, split=split, **few_shot_params)
-        
-        if dataset_name == "miniImageNet_test" or dataset_name == "tieredImageNet":
-            novel_loader = datamgr.get_data_loader(aug=False, train=False)
-        else:
-            novel_loader = datamgr.get_data_loader(aug=False)
-        print('Data loader initialized successfully!')
-
-        finetune(params, dataset_name, novel_loader, pretrained_dataset, pretrained_model, checkpoint_dir=checkpoint_dir, use_simclr_clf=use_simclr_clf,
-                finetune_epoch=100, batch_size=4, finetune_parts=finetune_parts, n_query=15, **few_shot_params)
+    for target in targets:
+        params.target_dataset = target
+        main(params)

@@ -1,342 +1,232 @@
-import math
-from functools import lru_cache
+import json
+import os
 
 import numpy as np
+import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd import Variable
 import torch.optim
-import torch.optim.lr_scheduler as lr_scheduler
-import time
-import os
-import glob
+from tqdm import tqdm
 
-from torch.utils.data import DataLoader
-
-import configs
-import backbone
-from data.datamgr import SimpleDataManager, SetDataManager
+from backbone import get_backbone_class
 from datasets.dataloader import get_dataloader, get_unlabeled_dataloader
-from methods.baselinetrain import BaselineTrain
-
-from io_utils import parse_args, get_resume_file  
-from datasets import miniImageNet_few_shot, tieredImageNet_few_shot, ISIC_few_shot, EuroSAT_few_shot, CropDisease_few_shot, Chest_few_shot
-
-class projector_SIMCLR(nn.Module):
-    '''
-        The projector for SimCLR. This is added on top of a backbone for SimCLR Training
-    '''
-    def __init__(self, in_dim, out_dim):
-        super(projector_SIMCLR, self).__init__()
-        self.in_dim = in_dim
-        self.out_dim = out_dim
-
-        self.fc1 = nn.Linear(in_dim, in_dim)
-        self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(in_dim, out_dim)
-
-    def forward(self, x):
-        return self.fc2(self.relu(self.fc1(x)))
+from io_utils import parse_args
+from model import get_model_class
+from paths import get_output_directory, get_final_pretrain_state_path, get_pretrain_state_path, \
+    get_pretrain_params_path, get_pretrain_history_path
+from scheduler import RepeatedMultiStepLR
 
 
-class NTXentLoss(nn.Module):
-    def __init__(self, temperature, use_cosine_similarity):
-        super(NTXentLoss, self).__init__()
-        self.temperature = temperature
-        self.softmax = torch.nn.Softmax(dim=-1)
-        self.similarity_function = self._get_similarity_function(use_cosine_similarity)
-        self.criterion = torch.nn.CrossEntropyLoss(reduction="sum")
+def _get_dataloaders(params):
+    labeled_source_bs = params.ls_batch_size
+    batch_size = params.batch_size
+    unlabeled_source_bs = batch_size
+    unlabeled_target_bs = batch_size
 
-    def _get_similarity_function(self, use_cosine_similarity):
-        if use_cosine_similarity:
-            self._cosine_similarity = torch.nn.CosineSimilarity(dim=-1)
-            return self._cosine_simililarity
-        else:
-            return self._dot_simililarity
-
-    @lru_cache(maxsize=4)
-    def _get_correlated_mask(self, batch_size):
-        diag = np.eye(2 * batch_size)
-        l1 = np.eye((2 * batch_size), 2 *
-                    batch_size, k=-batch_size)
-        l2 = np.eye((2 * batch_size), 2 *
-                    batch_size, k=batch_size)
-        mask = torch.from_numpy((diag + l1 + l2))
-        mask = (1 - mask).type(torch.bool)
-        return mask
-
-    @staticmethod
-    def _dot_simililarity(x, y):
-        v = torch.tensordot(x.unsqueeze(1), y.T.unsqueeze(0), dims=2)
-        # x shape: (N, 1, C)
-        # y shape: (1, C, 2N)
-        # v shape: (N, 2N)
-        return v
-
-    def _cosine_simililarity(self, x, y):
-        # x shape: (N, 1, C)
-        # y shape: (1, 2N, C)
-        # v shape: (N, 2N)
-        v = self._cosine_similarity(x.unsqueeze(1), y.unsqueeze(0))
-        return v
-
-    def forward(self, zis, zjs):
-        representations = torch.cat([zjs, zis], dim=0)
-        batch_size = zis.shape[0]
-        device = representations.device
-
-        similarity_matrix = self.similarity_function(
-            representations, representations)
-
-        # filter out the scores from the positive samples
-        l_pos = torch.diag(similarity_matrix, batch_size)
-        r_pos = torch.diag(similarity_matrix, -batch_size)
-        positives = torch.cat([l_pos, r_pos]).view(2 * batch_size, 1)
-
-        mask = self._get_correlated_mask(batch_size).to(device)
-        negatives = similarity_matrix[mask].view(2 * batch_size, -1)
-
-        logits = torch.cat((positives, negatives), dim=1)
-        logits /= self.temperature
-
-        labels = torch.zeros(2 * batch_size).to(device).long()
-        loss = self.criterion(logits, labels)
-
-        return loss / (2 * batch_size)
-
-
-def train(model, checkpoint_dir, pretrain_type, dataset_name=None,
-          labeled_source_loader=None, unlabeled_source_loader=None, unlabeled_target_loader=None):
-    
-    if labeled_source_loader is None and unlabeled_source_loader is None and unlabeled_target_loader is None:
-        raise ValueError('Invalid unlabeled loaders')
-
-    start_epoch = 0
-    stop_epoch = 1000
-    freq_epoch = 100
-
-    if pretrain_type in [6, 7, 8]:
-        first_pretrained_model_dir = '%s/checkpoints/miniImageNet/ResNet10_baseline/type1_strong' %(configs.save_dir)
-        modelfile = get_resume_file(first_pretrained_model_dir)
-        if not os.path.exists(modelfile):
-            raise Exception('Invalid model path: "{}" (no such file found)'.format(modelfile))
-        print ('Pre-training from the model weights path {}'.format(modelfile))
-
-        tmp = torch.load(modelfile)
-        state = tmp['state']
-        state_keys = list(state.keys())
-        for _, key in enumerate(state_keys):
-            if "feature." in key:
-                newkey = key.replace("feature.","")  # an architecture model has attribute 'feature', load architecture feature to backbone by casting name from 'feature.trunk.xx' to 'trunk.xx'  
-                state[newkey] = state.pop(key)
-            else:
-                state[newkey] = state.pop(key)
-        model.feature.load_state_dict(state, strict=True)
-
-    model.train()
-    model.cuda()
-    opt_params = [{'params': model.parameters()}]
-
-    if pretrain_type != 1:
-        clf_SIMCLR = projector_SIMCLR(model.feature.final_feat_dim, out_dim=128) # Projection dimension is fixed to 128
-        criterion_SIMCLR = NTXentLoss(temperature=1, use_cosine_similarity=True)
-
-        clf_SIMCLR.train()
-        clf_SIMCLR.cuda()
-        criterion_SIMCLR.cuda()
-        opt_params.append({'params': clf_SIMCLR.parameters()})
-
-    if pretrain_type != 1 and labeled_source_loader is not None:
-        labeled_source_loader_iter = iter(labeled_source_loader)
-        nll_criterion = nn.NLLLoss(reduction='mean').cuda()
-
-    if pretrain_type != 2 and unlabeled_source_loader is not None:
-        unlabeled_source_loader_iter = iter(unlabeled_source_loader)
-    
-    optimizer = torch.optim.SGD(opt_params,
-            lr=0.1, momentum=0.9,
-            weight_decay=1e-4,
-            nesterov=False)
-
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer,
-                                                     milestones=[400,600,800],
-                                                     gamma=0.1)
-
-    print ("Learning setup is set!")
-
-    if pretrain_type == 1:  # SL
-        for epoch in range(start_epoch, stop_epoch):
-            if not os.path.isdir(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-                
-            if epoch == 0:
-                outfile = os.path.join(checkpoint_dir, 'initial.tar')
-                torch.save({'epoch':epoch, 'state':model.state_dict()}, outfile)
-            
-            model.train()
-            model.cuda()
-            model.train_loop(epoch, labeled_source_loader, optimizer, scheduler)
-            
-
-            if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
-                outfile = os.path.join(checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save({'epoch':epoch, 'state':model.state_dict()}, outfile)
-    elif pretrain_type == 2:  # SU
-        for epoch in range(start_epoch, stop_epoch):
-            epoch_loss = 0
-            if epoch == 0:
-                outfile = os.path.join(checkpoint_dir, 'initial.tar')
-                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
-
-            for i, (X, y) in enumerate(unlabeled_source_loader): # For pre-training 2
-                f1 = model.feature(X[0].cuda())
-                f2 = model.feature(X[1].cuda())
-                loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item()
-            scheduler.step()
-            print ('epoch: {}, loss: {}'.format(epoch, epoch_loss/len(unlabeled_source_loader)))
-
-            if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
-                outfile = os.path.join(checkpoint_dir, '{:d}.tar'.format(epoch))
-                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
-    else:  # TU + a
-        for epoch in range(start_epoch, stop_epoch):
-            epoch_loss = 0
-            if epoch == 0:
-                outfile = os.path.join(checkpoint_dir, '{}_initial.tar'.format(dataset_name))
-                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
-
-            for i, (X, y) in enumerate(unlabeled_target_loader):
-                f1 = model.feature(X[0].cuda())
-                f2 = model.feature(X[1].cuda())
-
-                if labeled_source_loader is None and unlabeled_source_loader is None: # For pre-training 3, 6
-                    loss = criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2))
-
-                elif labeled_source_loader is not None: # SL (4, 7)
-                    try:
-                        X_base, y_base = labeled_source_loader_iter.next()
-                    except StopIteration:
-                        labeled_source_loader_iter = iter(labeled_source_loader)
-                        X_base, y_base = labeled_source_loader_iter.next()
-
-                    features_base = model.feature(X_base.cuda())
-                    logits_base = model.classifier(features_base)
-                    log_probability_base = F.log_softmax(logits_base, dim=1)
-
-                    gamma = 0.50
-                    loss = gamma * criterion_SIMCLR(clf_SIMCLR(f1), clf_SIMCLR(f2)) + (1-gamma) * nll_criterion(log_probability_base, y_base.cuda())
-                    
-                elif unlabeled_source_loader is not None:  # SU (5, 8)
-                    try:
-                        X_base, y_base = unlabeled_source_loader_iter.next()
-                    except StopIteration:
-                        unlabeled_source_loader_iter = iter(unlabeled_source_loader)
-                        X_base, y_base = unlabeled_source_loader_iter.next()
-
-                    f1_base = model.feature(X_base[0].cuda())
-                    f2_base = model.feature(X_base[1].cuda())
-                    loss = criterion_SIMCLR(clf_SIMCLR(torch.cat([f1, f1_base])),
-                                            clf_SIMCLR(torch.cat([f2, f2_base])))
-                
-                else:
-                    raise Exception('Invalid loader settings')
-
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-
-                epoch_loss += loss.item()
-            scheduler.step()
-            print ('epoch: {}, loss: {}'.format(epoch, epoch_loss/len(unlabeled_target_loader)))
-
-            if (epoch%freq_epoch==0) or (epoch==stop_epoch-1):
-                outfile = os.path.join(checkpoint_dir, '{}_{:d}.tar'.format(dataset_name, epoch))
-                torch.save({'epoch':epoch, 'state':model.state_dict(), 'simCLR':clf_SIMCLR.state_dict()}, outfile)
-
-if __name__=='__main__':
-    np.random.seed(10)
-    params = parse_args('train')
-
-    ##################################################################
-    if params.model == 'ResNet10':
-        model_dict = {params.model: backbone.ResNet10(method=params.method, track_bn=params.track_bn, reinit_bn_stats=params.reinit_bn_stats)}
-    elif params.model == 'ResNet18-84':
-        model_dict = {params.model: backbone.ResNet18_84x84(track_bn=params.track_bn)}
-    elif params.model == 'ResNet18':
-        model_dict = {params.model: backbone.ResNet18(track_bn=params.track_bn)}
-    else:
-        raise ValueError('Invalid `model` argument: {}'.format(params.model))
-
-    if params.method == 'baseline':
-        model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='softmax')
-    elif params.method == 'baseline++':
-        model = BaselineTrain(model_dict[params.model], params.num_classes, loss_type='dist')
-    else:
-        raise ValueError('Invalid `method` argument: {}'.format(params.method))
-
-    if params.aug_mode is None:
-        checkpoint_dir = '%s/checkpoints/%s/%s_%s/type%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type))
-    else:
-        checkpoint_dir = '%s/checkpoints/%s/%s_%s/type%s_%s' %(configs.save_dir, params.dataset, params.model, params.method, str(params.pretrain_type), params.aug_mode)
-    if not os.path.exists(checkpoint_dir):
-        os.makedirs(checkpoint_dir)
-
-    """
-    pretrain_type
-        1: Source L
-        2: Source U
-
-        3: Target U
-        6: (Source L) > Target U
-
-        4: Source L + Target U
-        7: (Source L) > Source L + Target U
-
-        5: Source U + Target U
-        8: (Source L) > Source U + Target U
-    """
-    labeled_source_loader = None
-    unlabeled_source_loader = None
-    unlabeled_target_loader = None
-
-    base_batch_size = 64
-    labeled_source_bs = base_batch_size
-    unlabeled_source_bs = base_batch_size
-    unlabeled_target_bs = base_batch_size
-    if params.pretrain_type in [5, 8]:
+    if params.us and params.ut:
         unlabeled_source_bs //= 2
         unlabeled_target_bs //= 2
 
-    if params.pretrain_type in [1, 4, 7]:
-        labeled_source_loader = get_dataloader(dataset_name=params.dataset, augmentation=params.aug_mode,
-                                               batch_size=labeled_source_bs)
-        print('Source labeled ({}) data loader initialized.'.format(params.dataset))
-    if params.pretrain_type in [2, 5, 8]:
-        print('Source unlabeled ({}) data loader initialized.'.format(params.dataset))
-        unlabeled_source_loader = get_dataloader(dataset_name=params.dataset, augmentation=params.aug_mode,
-                                                 batch_size=unlabeled_source_bs,
-                                                 siamese=True)  # important
+    ls, us, ut = None, None, None
+    if params.ls:
+        print('Using source data {} (labeled)'.format(params.source_dataset))
+        ls = get_dataloader(dataset_name=params.source_dataset, augmentation=params.augmentation,
+                            batch_size=labeled_source_bs, num_workers=params.num_workers)
 
-    if params.pretrain_type in [1, 2]:
-        print('Start pretraining type {}'.format(params.pretrain_type).center(60).center(80, '#'))
-        train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=None,
-              labeled_source_loader=labeled_source_loader, unlabeled_source_loader=unlabeled_source_loader,
-              unlabeled_target_loader=unlabeled_target_loader)
+    if params.us:
+        print('Using source data {} (unlabeled)'.format(params.source_dataset))
+        us = get_dataloader(dataset_name=params.source_dataset, augmentation=params.augmentation,
+                            batch_size=unlabeled_source_bs, num_workers=params.num_workers,
+                            siamese=True)  # important
+
+    if params.ut:
+        print('Using target data {} (unlabeled)'.format(params.target_dataset))
+        ut = get_unlabeled_dataloader(dataset_name=params.target_dataset, augmentation=params.augmentation,
+                                      batch_size=unlabeled_target_bs, num_workers=params.num_workers, siamese=True,
+                                      unlabeled_ratio=params.unlabeled_ratio)
+
+    return ls, us, ut
+
+
+def main(params):
+    backbone = get_backbone_class(params.backbone)()
+    model = get_model_class(params.model)(backbone, params)
+    output_dir = get_output_directory(params)
+    labeled_source_loader, unlabeled_source_loader, unlabeled_target_loader = _get_dataloaders(params)
+
+    params_path = get_pretrain_params_path(output_dir)
+    with open(params_path, 'w') as f:
+        json.dump(vars(params), f, indent=4)
+    pretrain_history_path = get_pretrain_history_path(output_dir)
+    print('Saving pretrain params to {}'.format(params_path))
+    print('Saving pretrain history to {}'.format(pretrain_history_path))
+
+    if params.pls or params.put or params.pmsl:
+        # Load previous pre-trained weights for second-step pre-training
+        previous_base_output_dir = get_output_directory(params, previous=True)
+        state_path = get_final_pretrain_state_path(previous_base_output_dir)
+        print('Loading previous state for second-step pre-training:')
+        print(state_path)
+
+        # Note, override model.load_state_dict to change this behavior.
+        state = torch.load(state_path)
+        # del state["classifier.weight"]  # hotfixes for using weights pre-trained on different source datasets w/o LS
+        # del state["classifier.bias"]
+        missing, unexpected = model.load_state_dict(state, strict=False)
+        if len(unexpected):
+            raise Exception("Unexpected keys from previous state: {}".format(unexpected))
+    elif params.imagenet_pretrained:
+        print("Loading ImageNet pretrained weights")
+        backbone.load_imagenet_weights()
+
+    model.train()
+    model.cuda()
+
+    if params.optimizer == 'sgd':
+        optimizer = torch.optim.SGD(model.parameters(),
+                                    lr=params.lr, momentum=0.9,
+                                    weight_decay=1e-4,
+                                    nesterov=False)
+    elif params.optimizer == 'adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=params.lr)
     else:
-        for i, dataset_name in enumerate(params.dataset_names):
-            unlabeled_target_loader = get_unlabeled_dataloader(dataset_name=dataset_name, augmentation=params.aug_mode,
-                                                               batch_size=unlabeled_target_bs, siamese=True,
-                                                               unlabeled_ratio=params.unlabeled_ratio)
-            print('Target unlabeled ({}) data loader initialized.'.format(params.dataset))
-            print('Start pretraining type {}'.format(params.pretrain_type).center(60).center(80, '#'))
-            print('Target {}/{}: {}'.format(i + 1, len(params.dataset_names), dataset_name).center(60).center(80, '#'))
-            train(model, checkpoint_dir, pretrain_type=params.pretrain_type, dataset_name=dataset_name,
-                  labeled_source_loader=labeled_source_loader, unlabeled_source_loader=unlabeled_source_loader,
-                  unlabeled_target_loader=unlabeled_target_loader)
+        raise ValueError('Invalid value for params.optimizer: {}'.format(params.optimizer))
+
+    if params.scheduler == "MultiStepLR":
+        scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=params.scheduler_milestones, gamma=0.1)
+    elif params.scheduler == "RepeatedMultiStepLR":
+        scheduler = RepeatedMultiStepLR(optimizer, milestones=params.scheduler_milestones, interval=1000, gamma=0.1)
+    else:
+        raise ValueError("Invalid value for params.scheduler: {}".format(params.scheduler))
+
+    pretrain_history = {
+        'loss': [0] * params.epochs,
+        'source_loss': [0] * params.epochs,
+        'target_loss': [0] * params.epochs,
+    }
+
+    for epoch in range(params.epochs):
+        print('EPOCH {}'.format(epoch).center(40).center(80, '#'))
+
+        epoch_loss = 0
+        epoch_source_loss = 0
+        epoch_target_loss = 0
+        steps = 0
+
+        if epoch == 0:
+            state_path = get_pretrain_state_path(output_dir, epoch=0)
+            print('Saving pre-train state to:')
+            print(state_path)
+            torch.save(model.state_dict(), state_path)
+
+        model.on_epoch_start()
+        model.train()
+
+        if params.ls and not params.us and not params.ut:  # only ls (type 1)
+            for x, y in tqdm(labeled_source_loader):
+                model.on_step_start()
+                optimizer.zero_grad()
+                loss, _ = model.compute_cls_loss_and_accuracy(x.cuda(), y.cuda())
+                loss.backward()
+                optimizer.step()
+                model.on_step_end()
+
+                epoch_loss += loss.item()
+                epoch_source_loss += loss.item()
+                steps += 1
+        elif not params.ls and params.us and not params.ut:  # only us (type 2)
+            for x, _ in tqdm(unlabeled_source_loader):
+                model.on_step_start()
+                optimizer.zero_grad()
+                loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())
+                loss.backward()
+                optimizer.step()
+                model.on_step_end()
+
+                epoch_loss += loss.item()
+                epoch_source_loss += loss.item()
+                steps += 1
+        elif params.ut:  # ut (epoch is based on unlabeled target)
+            max_epochs = params.epochs
+            max_steps = len(unlabeled_target_loader) * max_epochs
+            for i, (x, _) in enumerate(tqdm(unlabeled_target_loader)):
+                current_step = epoch * len(unlabeled_target_loader) + i
+                model.on_step_start()
+                optimizer.zero_grad()
+                target_loss = model.compute_ssl_loss(x[0].cuda(), x[1].cuda())  # UT loss
+                epoch_target_loss += target_loss.item()
+                source_loss = None
+                if params.ls:  # type 4, 7
+                    try:
+                        sx, sy = labeled_source_loader_iter.next()
+                    except (StopIteration, NameError):
+                        labeled_source_loader_iter = iter(labeled_source_loader)
+                        sx, sy = labeled_source_loader_iter.next()
+                    source_loss = model.compute_cls_loss_and_accuracy(sx.cuda(), sy.cuda())[0]  # LS loss
+                    epoch_source_loss += source_loss.item()
+                if params.us:  # type 5, 8
+                    try:
+                        sx, sy = unlabeled_source_loader_iter.next()
+                    except (StopIteration, NameError):
+                        unlabeled_source_loader_iter = iter(unlabeled_source_loader)
+                        sx, sy = unlabeled_source_loader_iter.next()
+                    source_loss = model.compute_ssl_loss(sx[0].cuda(), sx[1].cuda())  # US loss
+                    epoch_source_loss += source_loss.item()
+                if source_loss:
+                    if params.gamma_schedule is None:
+                        gamma = params.gamma
+                    elif params.gamma_schedule == "linear":
+                        gamma = current_step / (max_steps - 1)  # gamma \in [0, 1]
+                        assert 0 <= gamma <= 1  # temp
+                    else:
+                        raise AssertionError("Invalid params.gamma_schedule (should be checked during argparse)")
+                    loss = source_loss * (1 - gamma) + target_loss * gamma
+                else:
+                    loss = target_loss
+                loss.backward()
+                optimizer.step()
+                model.on_step_end()
+
+                epoch_loss += loss.item()
+                steps += 1
+        else:
+            raise AssertionError('Unknown training combination.')
+
+        if scheduler is not None:
+            scheduler.step()
+        model.on_epoch_end()
+
+        mean_loss = epoch_loss / steps
+        mean_source_loss = epoch_source_loss / steps
+        mean_target_loss = epoch_target_loss / steps
+        fmt = 'Epoch {:04d}: loss={:6.4f} source_loss={:6.4f} target_loss={:6.4f}'
+        print(fmt.format(epoch, mean_loss, mean_source_loss, mean_target_loss))
+
+        pretrain_history['loss'][epoch] = mean_loss
+        pretrain_history['source_loss'][epoch] = mean_source_loss
+        pretrain_history['target_loss'][epoch] = mean_target_loss
+
+        pd.DataFrame(pretrain_history).to_csv(pretrain_history_path)
+
+        epoch += 1
+        if epoch % params.model_save_interval == 0 or epoch == params.epochs:
+            state_path = get_pretrain_state_path(output_dir, epoch=epoch)
+            print('Saving pre-train state to:')
+            print(state_path)
+            torch.save(model.state_dict(), state_path)
+
+
+if __name__ == '__main__':
+    np.random.seed(10)
+    params = parse_args()
+
+    targets = params.target_dataset
+    if targets is None:
+        targets = [targets]
+    elif len(targets) > 1:
+        print('#' * 80)
+        print("Running pretrain iteratively for multiple target datasets: {}".format(targets))
+        print('#' * 80)
+
+    for target in targets:
+        params.target_dataset = target
+        main(params)
