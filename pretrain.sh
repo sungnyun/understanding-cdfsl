@@ -11,7 +11,7 @@ TARGET=${TARGETS[0]}
 BACKBONE=resnet18  # for tiered and full imagenet
 
 
-# Source SL (note, we adapt the torchvision pre-trained model for ResNet50 + ImageNet. Do not use this command as-is.)
+# Source SL (note, we adapt the torchvision pre-trained model for ResNet18 + ImageNet. Do not use this command as-is.)
 python pretrain.py --ls --source_dataset $SOURCE --target_dataset $TARGET --backbone $BACKBONE --model "base" --tag "default"
 
 # Target SSL
