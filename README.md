@@ -1,6 +1,6 @@
 # Understanding Cross-Domain Few-Shot Learning: An Experimental Study
 
-This repo contains the implementation of the paper under review, **Understanding Cross-Domain Few-Shot Learning: An Experimental Study**.
+This repo contains the implementation of our paper under review.
 
 ## Table of Contents
 
@@ -19,11 +19,17 @@ Our code works on `torch>=1.8`. Install the required Python packages via
 pip install -r requirements.txt
 ```
 
-## Data Setup
+## Data Preparation
 
-Make sure that that the dataset directories are correctly specified in `configs.py`, and that your dataset directories contain the correct files. Each directory should contain the files as such:
+Prepare and place all dataset directories in `/data/cdfsl`. You may specify a custom location in `configs.py`.
 
-```sh
+### BSCD-FSL
+
+Refer to the original BSCD-FSL [repository](https://github.com/IBM/cdfsl-benchmark).
+
+The dataset directories should be organized as follows:
+
+```
 CropDiseases/train
 ├── Apple___Apple_scab
 │  ├── 00075aa8-d81a-4184-8541-b692b78d398a___FREC_Scab 3335.JPG
@@ -46,39 +52,92 @@ chestX/images
 ├── 00000001_001.png
 ```
 
-Note: `chestX/images` should contain **all** images from the ChestX dataset (the dataset archive provided online will typically store these images across multiple folders).
+Note: `chestX/images` should contain **all** images from the ChestX dataset (the dataset archive provided online will
+typically split these images across multiple folders).
+
+### Cars
+
+https://ai.stanford.edu/~jkrause/cars/car_dataset.html
+
+We use all images from both training and test sets for CD-FSL experiments.
+For convenience, we pre-process the data such that each image goes into its respective class folder.
+
+1. Download [`car_ims.tgz`](http://ai.stanford.edu/~jkrause/car196/car_ims.tgz) (the tar of all images) and [`cars_annos.mat`](http://ai.stanford.edu/~jkrause/car196/cars_annos.mat) (all bounding boxes and labels for both training and test).
+2. Copy `cars_annos.mat` and unzip `car_ims.tgz` into `./data_preparation/input/`. The directory should contain the following:
+```
+data_preparation/input
+├── cars_annos.mat
+├── car_ims
+│  ├── 000001.jpg
+│  ├── 000002.jpg
+```
+3. Run `./data_preparation/cars.py`, to generate the cars dataset folder at `./data_preparation/output/cars_cdfsl`.
+4. Move the `cars_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
+
+### CUB (Caltech-UCSD Birds-200-2011)
+
+http://www.vision.caltech.edu/datasets/cub_200_2011/
+
+We use all images for CD-FSL experiments.
+
+1. Download [`CUB_200_2011.tgz`](https://data.caltech.edu/records/20098).
+2. Unzip the archive and copy the *enclosed* `CUB_200_2011/` folder to `/data/cdfsl`. You may specify a custom location in `configs.py`. The directory should contain the following:
+```
+CUB_200_2011/
+├── attributes/
+├── bounding_boxes.txt
+├── classes.txt
+├── image_class_labels.txt
+├── images/
+├── images.txt
+├── parts/
+├── README
+└── train_test_split.txt
+```
+
+### Places (Places 205)
+
+http://places.csail.mit.edu/user/
+
+Due to the size of the original dataset, we only use a subset of the training set for CD-FSL experiments.
+We use 27,440 images from 16 classes. Please refer to the paper for details or refer to the subset sampling code at
+`data_prepratation/places_plantae_subset_sampler.ipynb`.
+
+1. Download the Places dataset (link unavailable due to maintenance issues as of August 7th, 2022).
+2. Unzip the archive into `./data_preparation/input/`. The directory should contain the following:
+```
+data_preparation/input/
+├── places365_standard/
+│  ├── train/
+```
+3. Run `./data_preparation/places.py` to generate the places dataset folder at `./data_preparation/outuput/places_cdfsl`.
+4. Move the `places_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
+
+### Plantae (from iNaturalist 2018)
+
+https://github.com/visipedia/inat_comp/tree/master/2018#Data
+
+Due to the size of the original dataset, we only use a subset of the training set (of the Plantae super category) for CD-FSL experiments.
+We use 26,650 images from 69 classes. Please refer to the paper for details or refer to the subset sampling code at
+`data_prepratation/places_plantae_subset_sampler.ipynb`
+
+1. Download [`train_val2018.tar.gz`](https://ml-inat-competition-datasets.s3.amazonaws.com/2018/train_val2018.tar.gz) (~120GB).
+2. Unzip the archive and copy the enclosed `Plantae/` folder (~43GB) to `./data_preparation/input/`. The directory should contain the following:
+```
+data_preparation/input
+└── Plantae/
+   ├── 5221/
+   ├── 5222/
+   ├── 5223/
+```
+3. Run `./data_preparation/plantae.py` to generate the plantae dataset folder at `./data_preparation/outuput/plantae_cdfsl`.
+4. Move the `plantae_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
 
 ## Usage
 
-The main training files are `pretrain_new.py` and `finetune_new.py`. To see all CLI arguments, refer to `io_utils.py`.
-
-### 1. Pretraining <a name="pretraining"></a>
-
-To pretrain the model in a **supervised learning (SL)** with miniImageNet dataset, run the following command.
-```sh
-python ./pretrain_new.py --ls --source_dataset miniImageNet --backbone resnet10 --model base --tag [TAG]
-```
-`[TAG]` is an optional tag for distinguishing each experiment. The default name is `default`.
-
-To change the above command to a **self-supervised manner (SSL)**, use the following command.    
-(Caution: You have to specify the target dataset and model, such as simclr or byol.)
-```sh
-python ./pretrain_new.py --ut --source_dataset miniImageNet --target_dataset [TARGET] --backbone resnet10 --model [MODEL] --tag [TAG]
-```
-
-Also, `--ls --ut` will make the training **mixed-supervised learning (MSL)** setting, while adding the `--pls` option will make the **two-stage training**. For example, `--pls --ut` indicates two-stage SSL (SL -> SSL). In the case of two-stage training, the SL-pretrained model should exist in prior, and `--pls_tag` should match with the `[TAG]` you used during the SL pretraining.
-
-The output files, including model checkpoints and training parameters and history, are saved under the directory `./logs/output/[SOURCE]/[EXP_NAME]/[TARGET]`.
-
-### 2. Finetuning <a name="finetuning"></a>
-
-After the pretraining, the finetuning and few-shot evaluation can be conducted via `finetune_new.py`.    
-The basic rule is, match the options you used in pretraining (e.g., `--ls`, `--source_dataset`, `--target_dataset`, `--model`, **AND `--tag`**).
-
-For example, to finetune and evaluate in 5-shot with the MSL (SimCLR) pretrained model, run the following command.
-```sh
-python ./finetune_new.py --ls --ut --source_dataset miniImageNet --target_dataset [TARGET] --backbone resnet10 --model simclr --n_shot 5 --tag [TAG]
-```
+The main training scripts are `pretrain.py` and `finetune.py`. Refer to `pretrain.sh` and `finetune.sh` on example
+usages for the main results in our paper, e.g., SL, SSL, MSL, two-stage SSL and two-stage MSL.
+To see all CLI arguments, refer to `io_utils.py`.
 
 ## License
 
