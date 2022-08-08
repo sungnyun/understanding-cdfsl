@@ -21,13 +21,13 @@ pip install -r requirements.txt
 
 ## Data Preparation
 
-Prepare and place all dataset directories in `/data/cdfsl`. You may specify a custom location in `configs.py`.
+Prepare and place all dataset folders in `/data/cdfsl/`. You may specify custom locations in `configs.py`.
 
 ### BSCD-FSL
 
 Refer to the original BSCD-FSL [repository](https://github.com/IBM/cdfsl-benchmark).
 
-The dataset directories should be organized as follows:
+The dataset folders should be organized in `/data/cdfsl/` as follows:
 
 ```
 CropDiseases/train
@@ -52,7 +52,7 @@ chestX/images
 ├── 00000001_001.png
 ```
 
-Note: `chestX/images` should contain **all** images from the ChestX dataset (the dataset archive provided online will
+Note: `chestX/images/` should contain **all** images from the ChestX dataset (the dataset archive provided online will
 typically split these images across multiple folders).
 
 ### Cars
@@ -71,7 +71,7 @@ data_preparation/input
 │  ├── 000001.jpg
 │  ├── 000002.jpg
 ```
-3. Run `./data_preparation/cars.py`, to generate the cars dataset folder at `./data_preparation/output/cars_cdfsl`.
+3. Run `./data_preparation/cars.py`, to generate the cars dataset folder at `./data_preparation/output/cars_cdfsl/`.
 4. Move the `cars_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
 
 ### CUB (Caltech-UCSD Birds-200-2011)
@@ -81,7 +81,7 @@ http://www.vision.caltech.edu/datasets/cub_200_2011/
 We use all images for CD-FSL experiments.
 
 1. Download [`CUB_200_2011.tgz`](https://data.caltech.edu/records/20098).
-2. Unzip the archive and copy the *enclosed* `CUB_200_2011/` folder to `/data/cdfsl`. You may specify a custom location in `configs.py`. The directory should contain the following:
+2. Unzip the archive and copy the *enclosed* `CUB_200_2011/` folder to `/data/cdfsl/`. You may specify a custom location in `configs.py`. The directory should contain the following:
 ```
 CUB_200_2011/
 ├── attributes/
@@ -103,14 +103,17 @@ Due to the size of the original dataset, we only use a subset of the training se
 We use 27,440 images from 16 classes. Please refer to the paper for details or refer to the subset sampling code at
 `data_prepratation/places_plantae_subset_sampler.ipynb`.
 
-1. Download the Places dataset (link unavailable due to maintenance issues as of August 7th, 2022).
+1. Download [places365standard_easyformat.tar](http://data.csail.mit.edu/places/places365/places365standard_easyformat.tar).
 2. Unzip the archive into `./data_preparation/input/`. The directory should contain the following:
 ```
 data_preparation/input/
 ├── places365_standard/
 │  ├── train/
+│  │  ├── airfield/
+│  │  ├── airplane_cabin/
+│  │  ├── aiport_terminal/
 ```
-3. Run `./data_preparation/places.py` to generate the places dataset folder at `./data_preparation/outuput/places_cdfsl`.
+3. Run `./data_preparation/places.py` to generate the places dataset folder at `./data_preparation/outuput/places_cdfsl/`.
 4. Move the `places_cdfsl` directory to `/data/cdfsl/`. You may specify a custom location in `configs.py`.
 
 ### Plantae (from iNaturalist 2018)
