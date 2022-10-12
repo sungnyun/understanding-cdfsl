@@ -2,11 +2,6 @@
 
 This repo contains the implementation of our [paper](https://arxiv.org/abs/2202.01339) accepted at NeurIPS 2022.
 
-## Contact
-* Jaehoon Oh: jhoon.oh@kaist.ac.kr
-* Sungnyun Kim: ksn4397@kaist.ac.kr
-* Namgyu Ho: itsnamgyu@kaist.ac.kr
-
 ## Abstract
 Cross-domain few-shot learning (CD-FSL) has drawn increasing attention for handling large differences between the source and target domains--an important concern in real-world scenarios. To overcome these large differences, recent works have considered exploiting small-scale unlabeled data from the target domain during the pre-training stage. This data enables self-supervised pre-training on the target domain, in addition to supervised pre-training on the source domain. In this paper, we empirically investigate which pre-training is preferred based on domain similarity and few-shot difficulty of the target domain. We discover that the performance gain of self-supervised pre-training over supervised pre-training becomes large when the target domain is dissimilar to the source domain, or the target domain itself has low few-shot difficulty. We further design two pre-training schemes, mixed-supervised and two-stage learning, that improve performance. In this light, we present six findings for CD-FSL, which are supported by extensive experiments and analyses on three source and eight target benchmark datasets with varying levels of domain similarity and few-shot difficulty.
 
@@ -181,3 +176,8 @@ Below, we provide the licenses, attribution, citations, and URL of the datasets 
   1. *Wah, Catherine, Steve Branson, Peter Welinder, Pietro Perona, and Serge Belongie. "The caltech-ucsd birds-200-2011 dataset." (2011).*
 - **Cars** is available at https://ai.stanford.edu/~jkrause/cars/car_dataset.html.
   1. *Krause, Jonathan, Michael Stark, Jia Deng, and Li Fei-Fei. "3d object representations for fine-grained categorization." In Proceedings of the IEEE international conference on computer vision workshops, pp. 554-561. 2013.*
+  
+## Contact
+* Jaehoon Oh: jhoon.oh@kaist.ac.kr
+* Sungnyun Kim: ksn4397@kaist.ac.kr
+* Namgyu Ho: itsnamgyu@kaist.ac.kr
