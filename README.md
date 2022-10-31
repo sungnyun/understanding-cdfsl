@@ -15,6 +15,7 @@ Cross-domain few-shot learning (CD-FSL) has drawn increasing attention for handl
   * [Places](#places)
   * [Plantae](#plantae)
 * [Usage](#usage)
+* [Model Checkpoints](#model-checkpoints)
 * [License](#license)
 * [Attribution](#attribution)
 
@@ -148,6 +149,16 @@ data_preparation/input
 The main training scripts are `pretrain.py` and `finetune.py`. Refer to `pretrain.sh` and `finetune.sh` on example
 usages for the main results in our paper, e.g., SL, SSL, MSL, two-stage SSL and two-stage MSL.
 To see all CLI arguments, refer to `io_utils.py`.
+
+## Model Checkpoints
+
+| Backbone  | Pretraining  | Augmentation | Model Checkpoints |
+| :-------- | :------------: |:---------: |:--------------:|
+| ResNet10  | miniImageNet (SL) | default (strong) | [google drive](https://drive.google.com/file/d/1J4weUMgMhdjYe0sbPBNavaf5D7aRkAog/view?usp=sharing) |
+| ResNet10  | miniImageNet (SL) | base | [google drive](https://drive.google.com/file/d/11HSAg85vlS67sVsEgd-RYgksnlX61WOj/view?usp=sharing) |
+| ResNet18  | tieredImageNet (SL) | default (strong) | [google drive](https://drive.google.com/file/d/1hRbE5VwDvgsKV6E7okOgqJaNOVsSfitP/view?usp=share_link) |
+| ResNet18  | tieredImageNet (SL) | base | [google drive](https://drive.google.com/file/d/1-UOzOG-NkqRFXng-Zu3RAbuMhZJZfEhN/view?usp=share_link) |
+| ResNet18  | ImageNet (SL) | base | [torchvision](https://pytorch.org/vision/stable/models.html) |
 
 ## License
 
