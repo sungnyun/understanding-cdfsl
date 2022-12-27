@@ -16,8 +16,10 @@ Cross-domain few-shot learning (CD-FSL) has drawn increasing attention for handl
   * [Plantae](#plantae)
 * [Usage](#usage)
 * [Model Checkpoints](#model-checkpoints)
-* [License](#license)
 * [Attribution](#attribution)
+* [License](#license)
+* [Citation](#citation)
+* [Contact](#contact)
 
 ## Prerequisites
 
@@ -160,10 +162,6 @@ To see all CLI arguments, refer to `io_utils.py`.
 | ResNet18  | tieredImageNet (SL) | base | [google drive](https://drive.google.com/file/d/1-UOzOG-NkqRFXng-Zu3RAbuMhZJZfEhN/view?usp=share_link) |
 | ResNet18  | ImageNet (SL) | base | [torchvision](https://pytorch.org/vision/stable/models.html) |
 
-## License
-
-Distributed under the MIT License.
-
 ## Attribution
 
 Below, we provide the licenses, attribution, citations, and URL of the datasets considered in our paper (if applicable).
@@ -187,7 +185,24 @@ Below, we provide the licenses, attribution, citations, and URL of the datasets 
   1. *Wah, Catherine, Steve Branson, Peter Welinder, Pietro Perona, and Serge Belongie. "The caltech-ucsd birds-200-2011 dataset." (2011).*
 - **Cars** is available at https://ai.stanford.edu/~jkrause/cars/car_dataset.html.
   1. *Krause, Jonathan, Michael Stark, Jia Deng, and Li Fei-Fei. "3d object representations for fine-grained categorization." In Proceedings of the IEEE international conference on computer vision workshops, pp. 554-561. 2013.*
-  
+
+## License
+
+Distributed under the MIT License.
+
+## Citation
+
+If you find this repo useful for your research, please consider citing our paper:
+
+```
+@inproceedings{oh2022understanding,
+  title={Understanding Cross-Domain Few-Shot Learning Based on Domain Similarity and Few-Shot Difficulty},
+  author={Oh, Jaehoon and Kim, Sungnyun and Ho, Namgyu and Kim, Jin-Hwa and Song, Hwanjun and Yun, Se-Young},
+  booktitle={Advances in Neural Information Processing Systems},
+  year={2022}
+}
+```
+
 ## Contact
 * Jaehoon Oh: jhoon.oh@kaist.ac.kr
 * Sungnyun Kim: ksn4397@kaist.ac.kr
